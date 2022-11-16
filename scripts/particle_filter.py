@@ -19,6 +19,9 @@ import math
 
 from random import randint, random, uniform, choices, gauss
 
+from Robotics_Final.msg import r1
+from Robotics_Final.msg import r2
+
 from likelihood_field import *
 
 def get_yaw_from_pose(p):
@@ -64,7 +67,7 @@ class Particle:
 class ParticleFilter:
 
 
-    def __init__(self):
+    def __init__(self, robot_number):
 
         # once everything is setup initialized will be set to true
         self.initialized = False
@@ -110,6 +113,7 @@ class ParticleFilter:
         rospy.Subscriber(self.map_topic, OccupancyGrid, self.get_map)
 
         # subscribe to the lidar scan from the robot
+        # SUBSCRIBE TO 2 LIDAR SCAN SENSORS FROM EACH ROBOT
         rospy.Subscriber(self.scan_topic, LaserScan, self.robot_scan_received)
 
         # enable listening for and broadcasting corodinate transforms
@@ -124,9 +128,16 @@ class ParticleFilter:
         # intialize the particle cloud
         self.initialize_particle_cloud()
 
+        self.robot_number = robot_number
+
+        if robot_number == 1:
+            self.robot1_estimated_pose_pub = rospy.Publisher("/pose_1", r1, queue_size=10)
+            rospy.Subscriber("/pose_2", r2, self.robot_1_pose_recieved)
+        else:
+            self.robot2_estimated_pose_pub = rospy.Publisher("/pose_2", r2, queue_size=10)
+            rospy.Subscriber("/pose_1", r1, self.robot_2_pose_recieved)
+
         self.initialized = True
-
-
 
     def get_map(self, data):
 
@@ -320,7 +331,26 @@ class ParticleFilter:
         newPose = Pose(avgPoint, avgQuat)
         self.robot_estimate = newPose
 
+        #maybe implement some standard deviation thing so it doesn't ignore lidar too early
+        # IMPORTANT DONT FORGET
+
+        #make r1 or r2 object, then publish object
+        if self.robot_number == 1:
+            robot1_pose = r1()
+            robot1_pose.p = avgPoint
+            robot1_pose.q = avgQuat
+            self.robot1_estimated_pose_pub.publish(robot1_pose)
+        else:
+            robot2_pose = r2()
+            robot2_pose.p = avgPoint
+            robot2_pose.q = avgQuat
+            self.robot2_estimated_pose_pub.publish(robot2_pose)
+
     def update_particle_weights_with_measurement_model(self, data):
+        # THIS IS WHERE WE TAKE INTO ACCOUNT THE OTHER ROBOT'S ESTIMATED POSE
+        # DONT TAKE INTO ACCOUNT THE ANGLE OF ROBOT A THAT HITS THE ESTIMATED POST OF ROBOT B FOR UPDATING 
+        # ROBOT A'S PARTICLE WEIGHTS AND VICE VERSA.
+
         # Monte Carlo Localization (MCL) ALgorithm
 
         # Generate the lists of angles in radians and degrees
@@ -405,16 +435,15 @@ class ParticleFilter:
             # particle's new yaw
             p.pose.orientation = p_new_dir
 
+    def robot_1_pose_recieved(self, msg1):
+        other_pose = Pose(msg1.p, msg1.q)
+        self.other_robot_pose = other_pose
+
+    def robot_2_pose_recieved(self, msg2):
+        other_pose = Pose(msg2.p, msg2.q)
+        self.other_robot_pose = other_pose
+
 if __name__=="__main__":
-    pf = ParticleFilter()
+    pf1 = ParticleFilter()
 
     rospy.spin()
-
-
-
-
-
-
-
-
-

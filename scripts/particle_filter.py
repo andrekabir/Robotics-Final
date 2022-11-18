@@ -16,6 +16,7 @@ from tf.transformations import quaternion_from_euler, euler_from_quaternion
 import numpy as np
 from numpy.random import random_sample
 import math
+from statistics import pstdev
 
 from random import randint, random, uniform, choices, gauss
 
@@ -130,12 +131,27 @@ class ParticleFilter:
 
         self.robot_number = robot_number
 
+        # Make the default pose values all 0 to begin with
+        p = Point(0.0, 0.0, 0.0)
+        q = Quaternion(0.0, 0.0, 0.0, 0.0)
+
         if robot_number == 1:
             self.robot1_estimated_pose_pub = rospy.Publisher("/pose_1", r1, queue_size=10)
             rospy.Subscriber("/pose_2", r2, self.robot_1_pose_recieved)
+
+            robot1_pose = r1()
+            robot1_pose.p = p
+            robot1_pose.q = q
+            self.robot1_estimated_pose_pub.publish(robot1_pose)
         else:
             self.robot2_estimated_pose_pub = rospy.Publisher("/pose_2", r2, queue_size=10)
             rospy.Subscriber("/pose_1", r1, self.robot_2_pose_recieved)
+
+            robot2_pose = r2()
+            robot2_pose.p = p
+            robot2_pose.q = q
+            self.robot2_estimated_pose_pub.publish(robot2_pose)
+
 
         self.initialized = True
 
@@ -175,7 +191,7 @@ class ParticleFilter:
             sampleParticle = Particle(randPose, particle_weight)
             self.particle_cloud.append(sampleParticle)
             # increase counter to generate another particle
-            counter +=1
+            counter += 1
 
         # normalize nad publish particle cloud
         self.normalize_particles()
@@ -334,17 +350,19 @@ class ParticleFilter:
         #maybe implement some standard deviation thing so it doesn't ignore lidar too early
         # IMPORTANT DONT FORGET
 
-        #make r1 or r2 object, then publish object
-        if self.robot_number == 1:
-            robot1_pose = r1()
-            robot1_pose.p = avgPoint
-            robot1_pose.q = avgQuat
-            self.robot1_estimated_pose_pub.publish(robot1_pose)
-        else:
-            robot2_pose = r2()
-            robot2_pose.p = avgPoint
-            robot2_pose.q = avgQuat
-            self.robot2_estimated_pose_pub.publish(robot2_pose)
+        # std_dev = pstdev(self.particle_cloud)
+        # #make r1 or r2 object, then publish object
+        # if std_dev < 200:
+        #     if self.robot_number == 1:
+        #         robot1_pose = r1()
+        #         robot1_pose.p = avgPoint
+        #         robot1_pose.q = avgQuat
+        #         self.robot1_estimated_pose_pub.publish(robot1_pose)
+        #     else:
+        #         robot2_pose = r2()
+        #         robot2_pose.p = avgPoint
+        #         robot2_pose.q = avgQuat
+        #         self.robot2_estimated_pose_pub.publish(robot2_pose)
 
     def update_particle_weights_with_measurement_model(self, data):
         # THIS IS WHERE WE TAKE INTO ACCOUNT THE OTHER ROBOT'S ESTIMATED POSE
@@ -444,6 +462,6 @@ class ParticleFilter:
         self.other_robot_pose = other_pose
 
 if __name__=="__main__":
-    pf1 = ParticleFilter()
+    pf = ParticleFilter()
 
     rospy.spin()

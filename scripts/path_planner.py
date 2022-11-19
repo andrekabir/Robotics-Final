@@ -31,6 +31,15 @@ def make_pose_from_idx(valid_idx: int, resolution, origin, width) -> Pose:
     pose = make_pose(x=x, y=y, angle=0.0)
     return pose
 
+def make_idx_from_pose(pose,resolution, origin, width):
+    # x = pose.position.x
+    y = pose.position.y
+
+    idx = int((y - origin.position.y)/resolution) * width 
+    return idx 
+
+     
+
 def make_pose(x: float, y: float, angle: float) -> Pose:
     """
     Convenience method to make a point on a 2D plane with a single orientation angle (yaw / z)
@@ -41,6 +50,37 @@ def make_pose(x: float, y: float, angle: float) -> Pose:
                 orientation=Quaternion(*orientation))
 
     return pose
+    
+def explore_neighbours(pose):
+    
+    neighbours = []
+
+    for xd,yd in [(0,0.1),(-0.1,0),(0,-0.1),(.1,0)]:
+        neighbours.append(make_pose(pose.position.x+xd, 
+                                    pose.position.y+yd,
+                                    0))
+    return neighbours
+
+class Cell(object):
+    def __init__(self,idx):
+        self.fx = 100
+        self.gx = 100
+        self.hx = 100
+        self.index = idx
+        self.explored = False
+    
+    # def explore_neighbours(self):
+        
+    #     neighbours = []
+
+    #     for xd,yd in [(0,0.1),(-0.1,0),(0,-0.1),(.1,0)]:
+    #         neighbours.append(make_pose(   self.pose.position.x+xd, 
+    #                                         self.pose.position.y+yd,
+    #                                         0))
+    #     return neighbours
+
+
+
 
 class AStarPlanner(object):
     def __init__(self):
@@ -64,9 +104,16 @@ class AStarPlanner(object):
         self.map = data
 
         print("\n\nFetched map occupancy data, size: ", len(self.map.data))
-        print(self.map.data)
+        # print(self.map.data)
 
         valid_idxs = [idx for (idx, val) in enumerate(self.map.data) if val == 0]
+
+        cell_list = []
+
+        for n in valid_idxs:
+            cell_list.append(Cell(n))
+        print(cell_list)
+
         
         self.poses = []
 
@@ -81,8 +128,16 @@ class AStarPlanner(object):
         #     self.poses.append(pose)
 
         # self.publish_poses()
-        start_idx, end_idx = valid_idxs[10], valid_idxs[-10]
-        self.poses = [make_pose_from_idx(start_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width), make_pose_from_idx(end_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width)]
+        start_idx, end_idx = valid_idxs[1000], valid_idxs[-10]
+        first_pose = make_pose_from_idx(start_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width)
+        print("Index",make_idx_from_pose(first_pose,self.map.info.resolution, self.map.info.origin, self.map.info.width),  start_idx)
+        neighbours = explore_neighbours(first_pose)
+        self.poses = neighbours
+        self.poses.append(first_pose)
+        # [make_pose_from_idx(start_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width), 
+                    # make_pose_from_idx(end_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width)]
+        
+        
         self.publish_poses()
 
     def publish_poses(self):

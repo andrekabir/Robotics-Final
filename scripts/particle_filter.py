@@ -364,6 +364,17 @@ class ParticleFilter:
         #         robot2_pose.q = avgQuat
         #         self.robot2_estimated_pose_pub.publish(robot2_pose)
 
+        if self.robot_number == 1:
+            robot1_pose = r1()
+            robot1_pose.p = avgPoint
+            robot1_pose.q = avgQuat
+            self.robot1_estimated_pose_pub.publish(robot1_pose)
+        else:
+            robot2_pose = r2()
+            robot2_pose.p = avgPoint
+            robot2_pose.q = avgQuat
+            self.robot2_estimated_pose_pub.publish(robot2_pose)
+
     def update_particle_weights_with_measurement_model(self, data):
         # THIS IS WHERE WE TAKE INTO ACCOUNT THE OTHER ROBOT'S ESTIMATED POSE
         # DONT TAKE INTO ACCOUNT THE ANGLE OF ROBOT A THAT HITS THE ESTIMATED POST OF ROBOT B FOR UPDATING 
@@ -372,8 +383,8 @@ class ParticleFilter:
         # Monte Carlo Localization (MCL) ALgorithm
 
         # Generate the lists of angles in radians and degrees
-        lidar_angles = [np.pi/4, np.pi/2, .75*np.pi, np.pi, 1.25*np.pi, 1.5*np.pi, 1.75*np.pi, 2*np.pi]
-        lidar_angles_deg = [45, 90, 135, 180, 225, 270, 315, 360]
+        lidar_angles = [np.pi/4, np.pi/2, .72*np.pi, 1.28*np.pi, 1.5*np.pi, 1.75*np.pi, 2*np.pi]
+        lidar_angles_deg = [45, 90, 130, 230, 270, 315, 360]
         robot_sensor_distances = []
         # collect robot's sensor measurements for given angles:
         for angle in lidar_angles_deg:
@@ -456,10 +467,12 @@ class ParticleFilter:
     def robot_1_pose_recieved(self, msg1):
         other_pose = Pose(msg1.p, msg1.q)
         self.other_robot_pose = other_pose
+        print(other_pose)
 
     def robot_2_pose_recieved(self, msg2):
         other_pose = Pose(msg2.p, msg2.q)
         self.other_robot_pose = other_pose
+        print(other_pose)
 
 if __name__=="__main__":
     pf = ParticleFilter()

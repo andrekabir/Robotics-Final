@@ -20,8 +20,8 @@ from statistics import pstdev
 
 from random import randint, random, uniform, choices, gauss
 
-from Robotics_Final.msg import r1
-from Robotics_Final.msg import r2
+from Robotics_Final.msg import tom_msg
+from Robotics_Final.msg import jerry_msg
 
 from likelihood_field import *
 
@@ -44,15 +44,6 @@ def compute_prob_zero_centered_gaussian(dist, sd):
     prob = c * math.exp((-math.pow(dist,2))/(2 * math.pow(sd, 2)))
     return prob
 
-
-#def draw_random_sample(particle_cloud, num_particles):
-# We commented this function out because we figured we could just put the code
-# in resample
-#
-#    TODO
-#    return
-#
-
 class Particle:
 
     def __init__(self, pose, w):
@@ -68,20 +59,20 @@ class Particle:
 class ParticleFilter:
 
 
-    def __init__(self, robot_number):
+    def __init__(self):
 
         # once everything is setup initialized will be set to true
         self.initialized = False
 
 
         # initialize this particle filter node
-        rospy.init_node('turtlebot3_particle_filter')
+        rospy.init_node('jerry_particle_filter_node')
 
         # set the topic names and frame names
         self.base_frame = "base_footprint"
         self.map_topic = "map"
-        self.odom_frame = "odom"
-        self.scan_topic = "scan"
+        self.odom_frame = "jerry/odom"
+        self.scan_topic = "jerry/scan"
 
         # inialize our map
         self.map = OccupancyGrid()
@@ -105,10 +96,10 @@ class ParticleFilter:
         # Setup publishers and subscribers
 
         # publish the current particle cloud
-        self.particles_pub = rospy.Publisher("particle_cloud", PoseArray, queue_size=10)
+        self.particles_pub = rospy.Publisher("jerry/particle_cloud", PoseArray, queue_size=10)
 
         # publish the estimated robot pose
-        self.robot_estimate_pub = rospy.Publisher("estimated_robot_pose", PoseStamped, queue_size=10)
+        self.robot_estimate_pub = rospy.Publisher("jerry/estimated_robot_pose", PoseStamped, queue_size=10)
 
         # subscribe to the map server
         rospy.Subscriber(self.map_topic, OccupancyGrid, self.get_map)
@@ -129,28 +120,19 @@ class ParticleFilter:
         # intialize the particle cloud
         self.initialize_particle_cloud()
 
-        self.robot_number = robot_number
-
         # Make the default pose values all 0 to begin with
         p = Point(0.0, 0.0, 0.0)
         q = Quaternion(0.0, 0.0, 0.0, 0.0)
 
-        if robot_number == 1:
-            self.robot1_estimated_pose_pub = rospy.Publisher("/pose_1", r1, queue_size=10)
-            rospy.Subscriber("/pose_2", r2, self.robot_1_pose_recieved)
+        # Publish jerry's pose to pose_2 and get tom's from subscribing to pose_1, forwarding
+        # the data to self.tom_pose_recieved
+        self.jerry_estimated_pose_pub = rospy.Publisher("/pose_2", jerry_msg, queue_size=10)
+        rospy.Subscriber("/pose_1", tom_msg, self.tom_pose_recieved)
 
-            robot1_pose = r1()
-            robot1_pose.p = p
-            robot1_pose.q = q
-            self.robot1_estimated_pose_pub.publish(robot1_pose)
-        else:
-            self.robot2_estimated_pose_pub = rospy.Publisher("/pose_2", r2, queue_size=10)
-            rospy.Subscriber("/pose_1", r1, self.robot_2_pose_recieved)
-
-            robot2_pose = r2()
-            robot2_pose.p = p
-            robot2_pose.q = q
-            self.robot2_estimated_pose_pub.publish(robot2_pose)
+        jerry = jerry_msg()
+        jerry.p = p
+        jerry.q = q
+        self.jerry_estimated_pose_pub.publish(jerry)
 
 
         self.initialized = True
@@ -364,16 +346,10 @@ class ParticleFilter:
         #         robot2_pose.q = avgQuat
         #         self.robot2_estimated_pose_pub.publish(robot2_pose)
 
-        if self.robot_number == 1:
-            robot1_pose = r1()
-            robot1_pose.p = avgPoint
-            robot1_pose.q = avgQuat
-            self.robot1_estimated_pose_pub.publish(robot1_pose)
-        else:
-            robot2_pose = r2()
-            robot2_pose.p = avgPoint
-            robot2_pose.q = avgQuat
-            self.robot2_estimated_pose_pub.publish(robot2_pose)
+        jerry_pose = jerry_msg()
+        jerry_pose.p = avgPoint
+        jerry_pose.q = avgQuat
+        self.jerry_estimated_pose_pub.publish(jerry_pose)
 
     def update_particle_weights_with_measurement_model(self, data):
         # THIS IS WHERE WE TAKE INTO ACCOUNT THE OTHER ROBOT'S ESTIMATED POSE
@@ -464,15 +440,10 @@ class ParticleFilter:
             # particle's new yaw
             p.pose.orientation = p_new_dir
 
-    def robot_1_pose_recieved(self, msg1):
-        other_pose = Pose(msg1.p, msg1.q)
-        self.other_robot_pose = other_pose
-        print(other_pose)
-
-    def robot_2_pose_recieved(self, msg2):
-        other_pose = Pose(msg2.p, msg2.q)
-        self.other_robot_pose = other_pose
-        print(other_pose)
+    def tom_pose_recieved(self, msg1):
+        tom_pose = Pose(msg1.p, msg1.q)
+        self.tom_pose = tom_pose
+        print(tom_pose)
 
 if __name__=="__main__":
     pf = ParticleFilter()

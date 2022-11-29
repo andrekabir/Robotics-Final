@@ -24,19 +24,15 @@ from random import randint, random, uniform, choices, gauss
 
 from likelihood_field import *
 
+import heapq as hq
 
-def make_pose_from_idx(valid_idx: int, resolution, origin, width) -> Pose:
+
+def make_pose_from_idx(valid_idx: int, info) -> Pose:
+    resolution, width, origin = info.resolution, info.width, info.origin
     x = resolution * int(valid_idx % width) + origin.position.x
     y = resolution * int(valid_idx / width) + origin.position.y
     pose = make_pose(x=x, y=y, angle=0.0)
     return pose
-
-def make_idx_from_pose(pose,resolution, origin, width):
-    # x = pose.position.x
-    y = pose.position.y
-
-    idx = int((y - origin.position.y)/resolution) * width 
-    return idx 
 
      
 
@@ -61,27 +57,189 @@ def explore_neighbours(pose):
                                     0))
     return neighbours
 
+"""
+    Cell class: A unit on which A-star will operate
+"""
 class Cell(object):
-    def __init__(self,idx):
-        self.fx = 100
-        self.gx = 100
-        self.hx = 100
-        self.index = idx
+    def __init__(self, x, y, occupancy: int):
+        self.pos_x, self.pos_y = x, y
+        self.occupied = (occupancy > 0)
+        self.fx = math.inf
+        self.gx = 0
+        self.hx = math.inf
         self.explored = False
-    
-    # def explore_neighbours(self):
+        self.parent = None
+        self.open = False
+
+    def get_pose(self, info) -> Pose:
+        x = self.pos_x * info.resolution + info.origin.position.x
+        y = self.pos_y * info.resolution + info.origin.position.y
+
+        return make_pose(x=x, y=y, angle=0)
+
+    def recalculate_fn(self):
+        self.fx = self.gx + self.hx
+
+    def __lt__(self, cell):
+        if self.fx < cell.fx:
+            return True
+        elif self.fx == cell.fx:
+            return self.hx < cell.hx
+        else:
+            return False
+
+
+"""
+    CellGraph
+        - A graph data structure to perform A-Star on
+"""
+class CellGraph(object):
+
+    """
+        init: Takes in a map from the "map" ROS topic,
+            Initializes 'Cell' objects in 2D array fashion for A-Star
+    """
+    def __init__(self, map):
+        self.raw_map = map
         
-    #     neighbours = []
+        # Get the occupancy list
+        occupancy_list = map.data
+        print("Occupancy list has size: ", len(occupancy_list))
 
-    #     for xd,yd in [(0,0.1),(-0.1,0),(0,-0.1),(.1,0)]:
-    #         neighbours.append(make_pose(   self.pose.position.x+xd, 
-    #                                         self.pose.position.y+yd,
-    #                                         0))
-    #     return neighbours
+        # Initialize 2D Array of cells corresponsing to valid occupancy values
+        self.cell_array = {}
+        self.experiment_poses = []
+
+        valid_locs = len([i for i in occupancy_list if i >= 0])
+
+        length = 0
+        for (i, occupied) in enumerate(occupancy_list):
+            if occupied != 0:
+                continue # Location outside map
+
+            x, y = int(i % map.info.width), int(i / map.info.width)
+            print("Valid pos: ", x, y)
+            if x not in self.cell_array:
+                self.cell_array[x] = {}
+
+            self.cell_array[x][y] = Cell(x=x, y=y, occupancy=occupied)
+
+            length += 1
+
+        print("Valid points: ", length)
+
+        length = 0
+        for l in self.cell_array:
+            length += len(self.cell_array[l])
+
+        print("Number of cells in our graph: ", length)
+
+        self.experiment_poses = [self.cell_array[180][115].get_pose(self.raw_map.info), self.cell_array[199][180].get_pose(self.raw_map.info)]
+
+    """
+        get_cell: Returns a cell given absolute coordinates (x, y)
+    """
+    def get_cell(self, x, y):
+        if x not in self.cell_array or y not in self.cell_array[x]:
+            return None
+
+        return self.cell_array[x][y]
+
+    def get_cell_from_pose(self, pose: Pose):
+        x, y = self.make_coords_from_pose(pose)
+        return self.get_cell(self, x, y)
+
+    def make_coords_from_pose(self, pose: Pose):
+        origin = self.raw_map.info.origin
+        resolution = self.raw_map.resolution
+
+        x = pose.position.x - origin.position.x
+        y = pose.position.y - origin.position.y
+
+        x //= resolution; y //= resolution
+
+        return (x, y)
+
+    def rms_distance(self, coord1, coord2):
+        x_0, y_0 = coord1
+        x_1, y_1 = coord2
+
+        d = (x_0 - x_1) * (x_0 - x_1)
+        d += (y_0 - y_1) * (y_0 - y_1)
+
+        d = math.sqrt(d)
+        return d
+
+    def init_heuristic_cells(self, end_coord):
+        # RMS distance
+        for x in self.cell_array:
+            for y in self.cell_array[x]:
+                self.cell_array[x][y].hx = self.rms_distance((x, y), end_coord)
+                self.cell_array[x][y].gx = 0
+                self.cell_array[x][y].recalculate_fn()
+
+    def get_path(self, start_coord, end_coord):
+        start_cell = self.get_cell(start_coord[0], start_coord[1])
+        end_cell = self.get_cell(end_coord[0], end_coord[1])
+
+        if start_cell is None or end_cell is None:
+            print("Terminals of path requested are invalid!")
+            sys.exit(-1)
+
+        self.init_heuristic_cells(end_coord)
+
+        open_cells = []
+        hq.heappush(open_cells, start_cell)
+
+        current_cell = start_cell
+        while True:
+            current_cell = hq.heappop(open_cells) # should return cell with min fx
+            if current_cell == end_cell:
+                break
+
+            print("Current cell has fx: ", current_cell.fx)
+            current_cell.explored = True
+            cost_ngbr = 1
+
+            for delta_x in [-1, 0, 1]:
+                for delta_y in [-1, 0, 1]:
+                    nx = current_cell.pos_x + delta_x
+                    ny = current_cell.pos_y + delta_y
+
+                    next_cell = self.get_cell(nx, ny)
+                    if next_cell is None or next_cell.explored:
+                        continue
+
+                    new_gx = cost_ngbr + current_cell.gx
+                    
+                    if not next_cell.open:
+                        next_cell.gx = new_gx
+                        next_cell.recalculate_fn()
+                        hq.heappush(open_cells, next_cell)
+                        next_cell.open = True
+                    else:
+                        if next_cell.gx < new_gx:
+                            continue
+                        next_cell.gx = new_gx
+                        next_cell.recalculate_fn()
+                        hq.heapify(open_cells)
+                    
+                    next_cell.parent = current_cell
+        
+        tmp_cell = end_cell
+        path = []
+        while tmp_cell is not None:
+            path.append(tmp_cell.get_pose(self.raw_map.info))
+            tmp_cell = tmp_cell.parent
+
+        return path
 
 
-
-
+"""
+AStarPlanner - 
+    A ROS Node that accepts a map (occupancy grid), start and end points 
+    and genertates a shortest 'path' between the two points
+"""
 class AStarPlanner(object):
     def __init__(self):
         rospy.init_node("path_planner")
@@ -100,45 +258,32 @@ class AStarPlanner(object):
 
         self.poses = []
 
+        self.cell_graph = None
+
+    """
+    self.get_map() - callback to map_topic
+        Takes in the map
+        and generates a custom data structure, a 2D 'Cell' array 
+        for performing A-star on this map
+    """
     def get_map(self, data):
+        if self.cell_graph is not None:
+            print("Callback fn for get_map called again!")
+            sys.exit(-1)
+
         self.map = data
-
-        print("\n\nFetched map occupancy data, size: ", len(self.map.data))
-        # print(self.map.data)
-
-        valid_idxs = [idx for (idx, val) in enumerate(self.map.data) if val == 0]
-
-        cell_list = []
-
-        for n in valid_idxs:
-            cell_list.append(Cell(n))
-        print(cell_list)
-
+        self.cell_graph = CellGraph(self.map)
         
-        self.poses = []
-
-        # for p_idx in valid_idxs:
-        #     x = self.map.info.resolution * int(p_idx % self.map.info.width) + self.map.info.origin.position.x
-        #     y = self.map.info.resolution * int(p_idx / self.map.info.width) + self.map.info.origin.position.y
-        #     # theta = generate_angle(angle_multiple)
-
-        #     # assert (theta >= 0.0) and (theta <= 2 * math.pi), 'Invalid angle {}'.format(theta)
-
-        #     pose = make_pose(x=x, y=y, angle=0.0)
-        #     self.poses.append(pose)
-
-        # self.publish_poses()
-        start_idx, end_idx = valid_idxs[1000], valid_idxs[-10]
-        first_pose = make_pose_from_idx(start_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width)
-        print("Index",make_idx_from_pose(first_pose,self.map.info.resolution, self.map.info.origin, self.map.info.width),  start_idx)
-        neighbours = explore_neighbours(first_pose)
-        self.poses = neighbours
-        self.poses.append(first_pose)
-        # [make_pose_from_idx(start_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width), 
-                    # make_pose_from_idx(end_idx, self.map.info.resolution, self.map.info.origin, self.map.info.width)]
-        
-        
+        self.poses = self.cell_graph.experiment_poses
         self.publish_poses()
+
+        start_coord = (180, 115)
+        end_coord = (199, 180)
+        path = self.cell_graph.get_path(start_coord, end_coord)
+
+        self.poses = path
+        self.publish_poses()
+
 
     def publish_poses(self):
         pose_array = PoseArray()

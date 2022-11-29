@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-image: maze_map.pgm
-=======
 # image: /home/ubuntu/catkin_ws/src/Robotics-Final/map/maze_map.pgm
-image: /home/shobhitv/catkin_ws/src/Robotics-Final/map/maze_map.pgm
->>>>>>> e9427bec9911e1d0c977c481a8527aca9a26a372
+image: /home/ubuntu/catkin_ws/src/Robotics_Final/map/maze_map.pgm
 resolution: 0.050000
 origin: [-10.000000, -10.000000, 0.000000]
 negate: 0

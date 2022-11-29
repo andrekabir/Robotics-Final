@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-
 import rospy
+import sys
 import copy
-
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped
 from sensor_msgs.msg import LaserScan
@@ -20,10 +19,13 @@ from statistics import pstdev
 
 from random import randint, random, uniform, choices, gauss
 
-from Robotics_Final.msg import tom_msg
-from Robotics_Final.msg import jerry_msg
+# sys.path.insert(0, '/home/ubuntu/catkin_ws/src/Robotics_Final/msg')
+# print("sys path", sys.path)
+from robotics_final_project.msg import tom_msg
+from robotics_final_project.msg import jerry_msg
 
 from likelihood_field import *
+print("imports finished!")
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""

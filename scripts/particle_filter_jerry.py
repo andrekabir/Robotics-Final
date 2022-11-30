@@ -129,7 +129,7 @@ class ParticleFilter:
         print("here2")
         # Publish jerry's pose to pose_2 and get tom's from subscribing to pose_1, forwarding
         # the data to self.tom_pose_recieved
-        # self.jerry_estimated_pose_pub = rospy.Publisher("/pose_2", jerry_msg, queue_size=10)
+        self.jerry_estimated_pose_pub = rospy.Publisher("/pose_2", jerry_msg, queue_size=10)
         # rospy.Subscriber("/pose_1", tom_msg, self.tom_pose_recieved)
 
         # jerry = jerry_msg()

@@ -68,7 +68,7 @@ class ParticleFilter:
         rospy.init_node('tom_particle_filter_node')
 
         # set the topic names and frame names
-        self.base_frame = "tom/base_footprint"
+        self.base_frame = "base_footprint"
         self.map_topic = "map"
         self.odom_frame = "odom"
         self.scan_topic = "tom/scan"
@@ -126,12 +126,12 @@ class ParticleFilter:
         # Publish tom's pose to pose_1 and get jerry's from subscribing to pose_2, forwarding
         # the data to self.jerry_pose_recieved
         self.tom_estimated_pose_pub = rospy.Publisher("/pose_1", tom_msg, queue_size=10)
-        rospy.Subscriber("/pose_2", jerry_msg, self.jerry_pose_recieved)
+        # rospy.Subscriber("/pose_2", jerry_msg, self.jerry_pose_recieved)
 
-        tom = tom_msg()
-        tom.p = p
-        tom.q = q
-        self.tom_estimated_pose_pub.publish(tom)
+        # tom = tom_msg()
+        # tom.p = p
+        # tom.q = q
+        # self.tom_estimated_pose_pub.publish(tom)
 
 
         self.initialized = True

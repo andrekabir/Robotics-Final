@@ -19,8 +19,8 @@ from statistics import pstdev
 
 from random import randint, random, uniform, choices, gauss
 
-from Robotics_Final.msg import tom_msg
-from Robotics_Final.msg import jerry_msg
+from robotics_final_project.msg import tom_msg
+from robotics_final_project.msg import jerry_msg
 
 from likelihood_field import *
 
@@ -68,7 +68,7 @@ class ParticleFilter:
         rospy.init_node('tom_particle_filter_node')
 
         # set the topic names and frame names
-        self.base_frame = "base_footprint"
+        self.base_frame = "tom/base_footprint"
         self.map_topic = "map"
         self.odom_frame = "tom/odom"
         self.scan_topic = "tom/scan"
@@ -142,7 +142,7 @@ class ParticleFilter:
 
 
     def initialize_particle_cloud(self):
-
+        print("in particle cloud")
         counter = 0
         # create counter to generate self.num_particles # of particles
         while counter < self.num_particles:
@@ -176,6 +176,7 @@ class ParticleFilter:
 
         # normalize nad publish particle cloud
         self.normalize_particles()
+        print("particle cloud:", self.particle_cloud)
         self.publish_particle_cloud()
 
 

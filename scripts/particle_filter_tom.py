@@ -176,7 +176,7 @@ class ParticleFilter:
 
         # normalize nad publish particle cloud
         self.normalize_particles()
-        print("particle cloud:", self.particle_cloud)
+        # print("particle cloud:", self.particle_cloud)
         self.publish_particle_cloud()
 
 

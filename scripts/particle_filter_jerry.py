@@ -113,19 +113,20 @@ class ParticleFilter:
         # enable listening for and broadcasting corodinate transforms
         self.tf_listener = TransformListener()
         self.tf_broadcaster = TransformBroadcaster()
-
+        print("here1")
         # generate the likelihood field
         self.likelihood = LikelihoodField()
-
+        print("here1.25")
         # give things enough time to generate
         rospy.sleep(5)
+        print("here1.75")
         # intialize the particle cloud
         self.initialize_particle_cloud()
-
+        print("here1.5")
         # Make the default pose values all 0 to begin with
         p = Point(0.0, 0.0, 0.0)
         q = Quaternion(0.0, 0.0, 0.0, 0.0)
-
+        print("here2")
         # Publish jerry's pose to pose_2 and get tom's from subscribing to pose_1, forwarding
         # the data to self.tom_pose_recieved
         # self.jerry_estimated_pose_pub = rospy.Publisher("/pose_2", jerry_msg, queue_size=10)
@@ -136,8 +137,8 @@ class ParticleFilter:
         # jerry.q = q
         # self.jerry_estimated_pose_pub.publish(jerry)
 
-
         self.initialized = True
+        print("initialized")
 
     def get_map(self, data):
 
@@ -222,7 +223,7 @@ class ParticleFilter:
         # fill array with weights of existing particles
         for i in self.particle_cloud:
             weightsarr.append(i.w)
-
+        print("resample weights", weightsarr)
         # randomly pick particles based on weights
         random_list = choices(self.particle_cloud, weights = weightsarr, k = self.num_particles)
         self.particle_cloud = []
@@ -232,19 +233,22 @@ class ParticleFilter:
             self.particle_cloud.append(copy.deepcopy(p))
 
     def robot_scan_received(self, data):
-
+        print("in robot scan received")
         # wait until initialization is complete
         if not(self.initialized):
+            print("not initialized")
             return
 
         # we need to be able to transfrom the laser frame to the base frame
         if not(self.tf_listener.canTransform(self.base_frame, data.header.frame_id, data.header.stamp)):
+            print("not transform laser frame to base frame")
             return
 
         # wait for a little bit for the transform to become avaliable (in case the scan arrives
         # a little bit before the odom to base_footprint transform was updated)
         self.tf_listener.waitForTransform(self.base_frame, self.odom_frame, data.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, data.header.frame_id, data.header.stamp)):
+            print("not waiting for transform to become available")
             return
 
         # calculate the pose of the laser distance sensor
@@ -266,11 +270,12 @@ class ParticleFilter:
         # if there isn't a prior odom pose, set the odom_pose variable to the current pose
         if not self.odom_pose_last_motion_update:
             self.odom_pose_last_motion_update = self.odom_pose
+            print("not odom pose last motion update")
             return
 
-
+        print("peepeepoopoo")
         if self.particle_cloud:
-
+            print("beepboop")
             # check to see if we've moved far enough to perform an update
 
             curr_x = self.odom_pose.pose.position.x

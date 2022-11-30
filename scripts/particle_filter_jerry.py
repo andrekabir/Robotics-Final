@@ -73,7 +73,7 @@ class ParticleFilter:
         # set the topic names and frame names
         self.base_frame = "base_footprint"
         self.map_topic = "map"
-        self.odom_frame = "jerry/odom"
+        self.odom_frame = "odom"
         self.scan_topic = "jerry/scan"
 
         # inialize our map

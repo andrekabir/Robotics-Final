@@ -262,7 +262,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: tom/odom
+      Topic: odom
       Unreliable: false
       Value: false
     - Angle Tolerance: 0.10000000149011612
@@ -297,7 +297,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: jerry/odom
+      Topic: odom
       Unreliable: false
       Value: false
     - Alpha: 1

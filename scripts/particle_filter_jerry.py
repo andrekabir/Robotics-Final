@@ -73,7 +73,7 @@ class ParticleFilter:
         # set the topic names and frame names
         self.base_frame = "base_footprint"
         self.map_topic = "map"
-        self.odom_frame = "odom"
+        self.odom_frame = "jerry/odom"
         self.scan_topic = "jerry/scan"
 
         # inialize our map
@@ -223,7 +223,7 @@ class ParticleFilter:
         # fill array with weights of existing particles
         for i in self.particle_cloud:
             weightsarr.append(i.w)
-        print("resample weights", weightsarr)
+        print("resample weights")
         # randomly pick particles based on weights
         random_list = choices(self.particle_cloud, weights = weightsarr, k = self.num_particles)
         self.particle_cloud = []

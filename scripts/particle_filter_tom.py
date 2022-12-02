@@ -68,7 +68,7 @@ class ParticleFilter:
         rospy.init_node('tom_particle_filter_node')
 
         # set the topic names and frame names
-        self.base_frame = "base_footprint"
+        self.base_frame = "tom/base_footprint"
         self.map_topic = "map"
         self.odom_frame = "tom/odom"
         self.scan_topic = "tom/scan"
@@ -77,7 +77,7 @@ class ParticleFilter:
         self.map = OccupancyGrid()
 
         # the number of particles used in the particle filter
-        self.num_particles = 1000
+        self.num_particles = 20
 
         # initialize the particle cloud array
         self.particle_cloud = []
@@ -146,7 +146,9 @@ class ParticleFilter:
         counter = 0
         # create counter to generate self.num_particles # of particles
         while counter < self.num_particles:
+            print("stuck0.5")
             while True:
+                print("stuck here1")
                 # keep regenerating random coordinates for new particle until the random coordinates land on a valid, available spot
                 randx = uniform(self.map.info.origin.position.x, self.map.info.origin.position.x+self.map.info.width*self.map.info.resolution)
                 randy = uniform(self.map.info.origin.position.y, self.map.info.origin.position.y+self.map.info.height*self.map.info.resolution)
@@ -155,6 +157,7 @@ class ParticleFilter:
                 pixelrandy = (randy - self.map.info.origin.position.y) / self.map.info.resolution
                 # stop regenerating random coordinates for new particle once coordinates his a valid spot
                 if self.map.data[int(pixelrandx) * self.map.info.width + int(pixelrandy)] == 0:
+                    print("now break")
                     break
 
             z = 0

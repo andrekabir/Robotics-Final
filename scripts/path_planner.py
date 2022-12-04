@@ -237,6 +237,30 @@ class CellGraph(object):
         while tmp_cell is not None:
             path.append(tmp_cell.get_pose(self.raw_map.info))
             tmp_cell = tmp_cell.parent
+        
+        # Change the path so that each pose points to the next pose in the path
+
+        first_x = path[0].position.x
+        first_y = path[0].position.y
+
+        second_x = path[1].position.x
+        second_y = path[1].position.y
+
+        yaw = math.tan((second_y - first_y) / (second_x - first_x))
+
+        converted_value = quaternion_from_euler(0.0, 0.0, yaw)
+        path[0].orientation = converted_value
+
+        for index in range(2, len(path)):
+            first_x = path[index - 1].position.x
+            first_y = path[index - 1].position.y
+
+            second_x = path[index].position.x
+            second_y = path[index].position.y
+
+            yaw = math.tan((second_y - first_y) / (second_x - first_x))
+            converted_value = quaternion_from_euler(0.0, 0.0, yaw)
+            path[index - 1].orientation = converted_value
 
         return path
 

@@ -67,7 +67,7 @@ class Cell(object):
         self.pos_x, self.pos_y = x, y
         self.fx = math.inf
         self.gx = 0
-        print("Initing a cell with obstacle distance", obstacle_distance)
+        #print("Initing a cell with obstacle distance", obstacle_distance)
         if obstacle_distance < TURTLEBOT_WIDTH/2:
             self.hx = math.inf
         else:
@@ -110,7 +110,7 @@ class CellGraph(object):
 
         # Get the occupancy list
         occupancy_list = map.data
-        print("Occupancy list has size: ", len(occupancy_list))
+        #print("Occupancy list has size: ", len(occupancy_list))
 
         # Initialize 2D Array of cells corresponsing to valid occupancy values
         self.cell_array = {}
@@ -124,7 +124,7 @@ class CellGraph(object):
                 continue # Location outside map
 
             x, y = int(i % map.info.width), int(i / map.info.width)
-            print("Valid pos: ", x, y)
+            #print("Valid pos: ", x, y)
             if x not in self.cell_array:
                 self.cell_array[x] = {}
 
@@ -132,13 +132,13 @@ class CellGraph(object):
 
             length += 1
 
-        print("Valid points: ", length)
+        #print("Valid points: ", length)
 
         length = 0
         for l in self.cell_array:
             length += len(self.cell_array[l])
 
-        print("Number of cells in our graph: ", length)
+        #print("Number of cells in our graph: ", length)
 
         self.experiment_poses = [self.cell_array[180][115].get_pose(self.raw_map.info), self.cell_array[199][180].get_pose(self.raw_map.info)]
 
@@ -203,7 +203,7 @@ class CellGraph(object):
             if current_cell == end_cell:
                 break
 
-            print("Current cell has fx: ", current_cell.fx)
+            #print("Current cell has fx: ", current_cell.fx)
             current_cell.explored = True
             cost_ngbr = 1
 
@@ -240,27 +240,46 @@ class CellGraph(object):
         
         # Change the path so that each pose points to the next pose in the path
 
-        first_x = path[0].position.x
-        first_y = path[0].position.y
+        #first_x = path[0].position.x
+        #first_y = path[0].position.y
 
-        second_x = path[1].position.x
-        second_y = path[1].position.y
+        #second_x = path[1].position.x
+        #second_y = path[1].position.y
 
-        yaw = math.tan((second_y - first_y) / (second_x - first_x))
+        #if second_x == first_x:
+        #    yaw = 0.0
+        #else:
+        #    yaw = math.tan((second_y - first_y) / (second_x - first_x))
 
-        converted_value = quaternion_from_euler(0.0, 0.0, yaw)
-        path[0].orientation = converted_value
+        #converted_value = quaternion_from_euler(0.0, 0.0, yaw)
+        #path[0].orientation = converted_value
 
-        for index in range(2, len(path)):
+        for index in range(1, len(path)):
             first_x = path[index - 1].position.x
             first_y = path[index - 1].position.y
 
             second_x = path[index].position.x
             second_y = path[index].position.y
 
-            yaw = math.tan((second_y - first_y) / (second_x - first_x))
+            #print("first x: ", first_x)
+            #print("first y: ", first_y)
+            #print("second x: ", second_x)
+            #print("second y: ", second_y)
+
+            if second_x == first_x:
+                yaw = -(math.pi/2)
+            else:
+                #print("here")
+                if second_x < first_x:
+                    yaw = math.pi + (math.atan((second_x - first_x) / (second_y - first_y)))
+                else:
+                    yaw = math.atan((second_x - first_x) / (second_y - first_y))
+
+                #yaw = math.tan((second_y - first_y) / (second_x - first_x))
+                #print(yaw)
             converted_value = quaternion_from_euler(0.0, 0.0, yaw)
-            path[index - 1].orientation = converted_value
+            quat_value = Quaternion(converted_value[0], converted_value[1], converted_value[2], converted_value[3])
+            path[index - 1].orientation = quat_value
 
         return path
 
@@ -298,7 +317,7 @@ class AStarPlanner(object):
     """
     def get_map(self, data):
         if self.cell_graph is not None:
-            print("Callback fn for get_map called again!")
+            #print("Callback fn for get_map called again!")
             sys.exit(-1)
 
         self.map = data
@@ -324,7 +343,7 @@ class AStarPlanner(object):
             pose_array.poses.append(part)
 
         self.particles_pub.publish(pose_array)
-        print("Number of valid points are: ", len(self.poses))
+        #print("Number of valid points are: ", len(self.poses))
 
 
 if __name__ == "__main__":

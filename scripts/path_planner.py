@@ -22,10 +22,12 @@ from random import randint, random, uniform, choices, gauss
 # from Robotics_Final.msg import r1
 # from Robotics_Final.msg import r2
 
-from likelihood_field import *
+from likelihood_field import LikelihoodField
 
 import heapq as hq
 
+# Width of bot in metres
+TURTLEBOT_WIDTH = 0.3
 
 def make_pose_from_idx(valid_idx: int, info) -> Pose:
     resolution, width, origin = info.resolution, info.width, info.origin
@@ -61,12 +63,15 @@ def explore_neighbours(pose):
     Cell class: A unit on which A-star will operate
 """
 class Cell(object):
-    def __init__(self, x, y, occupancy: int):
+    def __init__(self, x, y, obstacle_distance):
         self.pos_x, self.pos_y = x, y
-        self.occupied = (occupancy > 0)
         self.fx = math.inf
         self.gx = 0
-        self.hx = math.inf
+        print("Initing a cell with obstacle distance", obstacle_distance)
+        if obstacle_distance < TURTLEBOT_WIDTH/2:
+            self.hx = math.inf
+        else:
+            self.hx = 0
         self.explored = False
         self.parent = None
         self.open = False
@@ -101,7 +106,8 @@ class CellGraph(object):
     """
     def __init__(self, map):
         self.raw_map = map
-        
+        self.likelihood_field = LikelihoodField(maze_map=map)
+
         # Get the occupancy list
         occupancy_list = map.data
         print("Occupancy list has size: ", len(occupancy_list))
@@ -122,7 +128,7 @@ class CellGraph(object):
             if x not in self.cell_array:
                 self.cell_array[x] = {}
 
-            self.cell_array[x][y] = Cell(x=x, y=y, occupancy=occupied)
+            self.cell_array[x][y] = Cell(x=x, y=y, obstacle_distance=self.likelihood_field.get_closest_obstacle_distance(x, y))
 
             length += 1
 
@@ -174,7 +180,7 @@ class CellGraph(object):
         # RMS distance
         for x in self.cell_array:
             for y in self.cell_array[x]:
-                self.cell_array[x][y].hx = self.rms_distance((x, y), end_coord)
+                self.cell_array[x][y].hx += self.rms_distance((x, y), end_coord)
                 self.cell_array[x][y].gx = 0
                 self.cell_array[x][y].recalculate_fn()
 

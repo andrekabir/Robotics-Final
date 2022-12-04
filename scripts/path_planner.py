@@ -2,7 +2,7 @@
 
 import rospy
 import copy
-
+import sys
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped
 from sensor_msgs.msg import LaserScan
@@ -283,8 +283,8 @@ class AStarPlanner(object):
         self.poses = self.cell_graph.experiment_poses
         self.publish_poses()
 
-        start_coord = (180, 115)
-        end_coord = (199, 180)
+        start_coord = (185, 115)
+        end_coord = (195, 180)
         path = self.cell_graph.get_path(start_coord, end_coord)
 
         self.poses = path

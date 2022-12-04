@@ -53,6 +53,8 @@ add_message_files(
    FILES
    tom_msg.msg
    jerry_msg.msg
+   PerceivedLocation.msg
+   AmbulanceHonk.msg
 )
 
 ## Generate services in the 'srv' folder

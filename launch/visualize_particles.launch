@@ -5,7 +5,7 @@
 
   <!-- Map server -->
   <!-- <node pkg="map_server" name="map_server" type="map_server" args="$(find robotics_final_project)/map/maze_map.yaml"/> -->
-  <node pkg="map_server" name="map_server" type="map_server" args="/home/ubuntu/catkin_ws/src/Robotics_Final/map/maze_map.yaml"/>
+  <node pkg="map_server" name="map_server" type="map_server" args="/home/intro-robo-student-01/catkin_ws/src/Robotics-Final/map/maze_map.yaml"/>
 
   <!-- Run a transformation between the map and odom frames -->
   <node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="-2.75 1.0 0 0 0 0 /map /odom 100" />

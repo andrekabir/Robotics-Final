@@ -117,7 +117,7 @@ class ParticleFilter:
         self.tf_broadcaster = TransformBroadcaster()
 
         # generate the likelihood field
-        self.likelihood = LikelihoodField()
+        self.likelihood = None
 
         # give things enough time to generate
         rospy.sleep(5)
@@ -131,6 +131,7 @@ class ParticleFilter:
     def get_map(self, data):
 
         self.map = data
+        self.likelihood = LikelihoodField(maze_map=self.map)
 
 
     def initialize_particle_cloud(self):

@@ -128,7 +128,7 @@ class CellGraph(object):
             if x not in self.cell_array:
                 self.cell_array[x] = {}
 
-            self.cell_array[x][y] = Cell(x=x, y=y, obstacle_distance=self.likelihood_field.get_closest_obstacle_distance(x, y))
+            self.cell_array[x][y] = Cell(x=x, y=y, obstacle_distance=self.likelihood_field.get_closest_obstacle_distance(x, y, transform=False))
 
             length += 1
 

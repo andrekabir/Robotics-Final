@@ -79,12 +79,17 @@ class LikelihoodField(object):
                 (lower_bounds[1]*r + self.map.info.origin.position.y,
                  upper_bounds[1]*r + self.map.info.origin.position.y))
 
-    def get_closest_obstacle_distance(self, x, y):
+    def get_closest_obstacle_distance(self, x, y, transform=True):
         """ Compute the closest obstacle to the specified (x,y) coordinate in
             the map.  If the (x,y) coordinate is out of the map boundaries, nan
             will be returned. """
-        x_coord = (x - self.map.info.origin.position.x)/self.map.info.resolution
-        y_coord = (y - self.map.info.origin.position.y)/self.map.info.resolution
+
+        x_coord, y_coord = x, y
+
+        if transform:
+            x_coord = (x - self.map.info.origin.position.x)/self.map.info.resolution
+            y_coord = (y - self.map.info.origin.position.y)/self.map.info.resolution
+
         if type(x) is np.ndarray:
             x_coord = x_coord.astype(np.int)
             y_coord = y_coord.astype(np.int)

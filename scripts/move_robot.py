@@ -23,7 +23,7 @@ from random import randint, random, uniform, choices, gauss
 from path_planner import AStarPlanner
 
 class movement(object):
-    def __init__(self, astar: AStarPlanner):
+    def __init__(self):
         rospy.init_node("movement")
         self.map_topic = "map"
         self.pose_topic = "estimated_robot_pose"
@@ -35,12 +35,12 @@ class movement(object):
         self.map = OccupancyGrid()
         # initialize robot velocity
         self.robot_speed = 0.2
-        self.time = 4
+        self.time = 2
         # subscribe to the map server
         rospy.Subscriber(self.map_topic, OccupancyGrid, self.get_map)
 
-        self.astar = astar
-        rospy.sleep(3)
+        self.astar = AStarPlanner
+        rospy.sleep(4)
 
         rospy.Subscriber(self.pose_topic, PoseStamped, self.get_pose)
 

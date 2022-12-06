@@ -132,7 +132,7 @@ class ParticleFilter:
 
         self.map = data
         self.likelihood = LikelihoodField(maze_map=self.map)
-
+        # generate the likelihood field
 
     def initialize_particle_cloud(self):
 

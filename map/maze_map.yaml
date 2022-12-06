@@ -1,5 +1,6 @@
-image: /home/intro-robo-student-01/catkin_ws/src/Robotics-Final/map/maze_map.pgm
-# image: /home/shobhitv/catkin_ws/src/Robotics-Final/map/maze_map.pgm
+
+# image: /home/ubuntu/catkin_ws/src/Robotics-Final/map/maze_map.pgm
+image: /home/dangan/catkin_ws/src/Robotics_Final/map/maze_map.pgm
 resolution: 0.050000
 origin: [-10.000000, -10.000000, 0.000000]
 negate: 0

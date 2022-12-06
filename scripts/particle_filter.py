@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import rospy
-import copy
 
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped
@@ -16,18 +15,15 @@ from tf.transformations import quaternion_from_euler, euler_from_quaternion
 import numpy as np
 from numpy.random import random_sample
 import math
-from statistics import pstdev
+#import matplotlib.pyplot as plt
 
-from random import randint, random, uniform, choices, gauss
+import random
+from likelihood_field import LikelihoodField
+from typing import List
 
-from Robotics_Final.msg import r1
-from Robotics_Final.msg import r2
-
-from likelihood_field import *
 
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
-
     yaw = (euler_from_quaternion([
             p.orientation.x,
             p.orientation.y,
@@ -37,42 +33,60 @@ def get_yaw_from_pose(p):
 
     return yaw
 
+
+def softmax(weights: List[float]) -> np.ndarray:
+    """
+    Normalizes the given weights using a softmax operation.
+    """
+    weights_array = np.array(weights)
+    exp_values = np.exp(weights_array - np.max(weights_array))  # Shift by maximum value for better stability
+    return exp_values / np.sum(exp_values)
+
+
 def compute_prob_zero_centered_gaussian(dist, sd):
-    """ Takes in distance from zero (dist) and standard deviation (sd) for gaussian
-        and returns probability (likelihood) of observation """
+    """ 
+    Takes in distance from zero (dist) and standard deviation (sd) for gaussian
+        and returns probability (likelihood) of observation. From class meeting 06.
+    """
     c = 1.0 / (sd * math.sqrt(2 * math.pi))
-    prob = c * math.exp((-math.pow(dist,2))/(2 * math.pow(sd, 2)))
+    prob = c * np.exp(-1 * dist * dist) / (2 * sd * sd)
     return prob
 
 
-#def draw_random_sample(particle_cloud, num_particles):
-# We commented this function out because we figured we could just put the code
-# in resample
-#
-#    TODO
-#    return
-#
-
 class Particle:
 
-    def __init__(self, pose, w):
-
+    def __init__(self, pose: Pose, w: float):
         # particle pose (Pose object from geometry_msgs)
         self.pose = pose
 
         # particle weight
         self.w = w
 
+    @property
+    def angle(self) -> float:
+        return get_yaw_from_pose(self.pose)
+
+    def divide_weight(self, factor: float):
+        assert factor != 0.0, 'Must provide nonzero factor'
+        self.w = self.w / factor
+
+    @classmethod
+    def make(cls, x: float, y: float, angle: float, weight: float) -> Point:
+        """
+        Convenience method to make a point on a 2D plane with a single orientation angle (yaw / z)
+        """
+        point = Point(x=x, y=y, z=0.0)
+        orientation = quaternion_from_euler(0.0, 0.0, angle)
+        pose = Pose(position=point,
+                    orientation=Quaternion(*orientation))
+        return cls(pose=pose, w=weight)
 
 
 class ParticleFilter:
 
-
-    def __init__(self, robot_number):
-
+    def __init__(self):
         # once everything is setup initialized will be set to true
-        self.initialized = False
-
+        self.initialized = False        
 
         # initialize this particle filter node
         rospy.init_node('turtlebot3_particle_filter')
@@ -101,7 +115,6 @@ class ParticleFilter:
 
         self.odom_pose_last_motion_update = None
 
-
         # Setup publishers and subscribers
 
         # publish the current particle cloud
@@ -114,141 +127,112 @@ class ParticleFilter:
         rospy.Subscriber(self.map_topic, OccupancyGrid, self.get_map)
 
         # subscribe to the lidar scan from the robot
-        # SUBSCRIBE TO 2 LIDAR SCAN SENSORS FROM EACH ROBOT
         rospy.Subscriber(self.scan_topic, LaserScan, self.robot_scan_received)
 
         # enable listening for and broadcasting corodinate transforms
         self.tf_listener = TransformListener()
         self.tf_broadcaster = TransformBroadcaster()
 
-        # generate the likelihood field
-        self.likelihood = LikelihoodField()
+        rospy.sleep(1)
 
-        # give things enough time to generate
-        rospy.sleep(5)
-        # intialize the particle cloud
+    def get_map(self, data):
+        self.map = data
+
+        # Create the likelihood field using the given map
+        self.likelihood_field = LikelihoodField(maze_map=self.map)
+
+        # Initialize particle cloud after we get the map
         self.initialize_particle_cloud()
 
-        self.robot_number = robot_number
+    def initialize_particle_cloud(self):
+        if self.initialized:
+            return
 
-        # Make the default pose values all 0 to begin with
-        p = Point(0.0, 0.0, 0.0)
-        q = Quaternion(0.0, 0.0, 0.0, 0.0)
+        def generate_angle(angle_multiple: int) -> float:
+            return random.randint(0, 2 * angle_multiple) * math.pi / float(angle_multiple)
+        
+        # (1) Select random spots that are valid (e.g., not inside a wall)
+        # (2) Can pick a random angle in [0, 2pi)
+        # (3) Convert the angle + location to a proper pose
+        # (4) Add to the point cloud
 
-        if robot_number == 1:
-            self.robot1_estimated_pose_pub = rospy.Publisher("/pose_1", r1, queue_size=10)
-            rospy.Subscriber("/pose_2", r2, self.robot_1_pose_recieved)
+        valid_idxs = [idx for (idx, val) in enumerate(self.map.data) if val == 0]
+        self.particle_cloud = []
 
-            robot1_pose = r1()
-            robot1_pose.p = p
-            robot1_pose.q = q
-            self.robot1_estimated_pose_pub.publish(robot1_pose)
-        else:
-            self.robot2_estimated_pose_pub = rospy.Publisher("/pose_2", r2, queue_size=10)
-            rospy.Subscriber("/pose_1", r1, self.robot_2_pose_recieved)
+        angle_multiple = 15.0  # Move in multiples if pi / 15
 
-            robot2_pose = r2()
-            robot2_pose.p = p
-            robot2_pose.q = q
-            self.robot2_estimated_pose_pub.publish(robot2_pose)
+        if len(valid_idxs) < self.num_particles:
+            # (1) Put a particle in every valid cell
+            for p_idx in valid_idxs:
+                x = self.map.info.resolution * int(p_idx % self.map.info.width) + self.map.info.origin.position.x
+                y = self.map.info.resolution * int(p_idx / self.map.info.width) + self.map.info.origin.position.y
+                theta = generate_angle(angle_multiple)
 
+                assert (theta >= 0.0) and (theta <= 2 * math.pi), 'Invalid angle {}'.format(theta)
+
+                particle = Particle.make(x=x, y=y, angle=theta, weight=1.0)
+                self.particle_cloud.append(particle)
+
+        # (2) For remaining, pick a random cell and put particle there
+        num_remaining_particles = self.num_particles - len(self.particle_cloud)
+        remaining_particle_idxs = random.choices(valid_idxs, k=num_remaining_particles)
+
+        for p_idx in remaining_particle_idxs:
+            x = self.map.info.resolution * int(p_idx % self.map.info.width) + self.map.info.origin.position.x
+            y = self.map.info.resolution * int(p_idx / self.map.info.width) + self.map.info.origin.position.y
+            theta = generate_angle(angle_multiple)
+
+            assert (theta >= 0.0) and (theta <= 2 * math.pi), 'Invalid angle {}'.format(theta)
+
+            particle = Particle.make(x=x, y=y, angle=theta, weight=1.0)
+            self.particle_cloud.append(particle)
+
+        # Normalize the weights and publish the particles + robot pose
+        self.normalize_particles()
+        self.publish_particle_cloud()
+        self.update_estimated_robot_pose()
+        self.publish_estimated_robot_pose()
 
         self.initialized = True
 
-    def get_map(self, data):
-
-        self.map = data
-
-
-    def initialize_particle_cloud(self):
-
-        counter = 0
-        # create counter to generate self.num_particles # of particles
-        while counter < self.num_particles:
-            while True:
-                # keep regenerating random coordinates for new particle until the random coordinates land on a valid, available spot
-                randx = uniform(self.map.info.origin.position.x, self.map.info.origin.position.x+self.map.info.width*self.map.info.resolution)
-                randy = uniform(self.map.info.origin.position.y, self.map.info.origin.position.y+self.map.info.height*self.map.info.resolution)
-                # convert coordinates to pixel units
-                pixelrandx = (randx - self.map.info.origin.position.x)  / self.map.info.resolution
-                pixelrandy = (randy - self.map.info.origin.position.y) / self.map.info.resolution
-                # stop regenerating random coordinates for new particle once coordinates his a valid spot
-                if self.map.data[int(pixelrandx) * self.map.info.width + int(pixelrandy)] == 0:
-                    break
-
-            z = 0
-            # construct new point with random coordinates
-            randPoint = Point(randy, randx, z)
-            # select random particle direction for particle
-            randDirEuler = uniform(0, 2*np.pi)
-            # conver euler to quaternion
-            convertedValues = quaternion_from_euler(0.0, 0.0, randDirEuler)
-            randDir = Quaternion(convertedValues[0], convertedValues[1], convertedValues[2], convertedValues[3])
-            # create random pose with random position and random direction
-            randPose = Pose(randPoint, randDir)
-            # create new random particle with average weight
-            particle_weight = round(1/self.num_particles, 5)
-            sampleParticle = Particle(randPose, particle_weight)
-            self.particle_cloud.append(sampleParticle)
-            # increase counter to generate another particle
-            counter += 1
-
-        # normalize nad publish particle cloud
-        self.normalize_particles()
-        self.publish_particle_cloud()
-
-
     def normalize_particles(self):
-        # make all the particle weights sum to 1.0
+        # Compute the normalized weights
+        weights = [particle.w for particle in self.particle_cloud]
+        normalized_weights = softmax(weights)
 
-        # compute the total weight to know what to divide by
-        totalweight = 0
-        for p in self.particle_cloud:
-            totalweight += p.w
-
-        # divide each particle by the total weight
-        for p in self.particle_cloud:
-            p.w = p.w/totalweight
+        # Update the weights to their normalized values
+        for idx, weight in enumerate(normalized_weights):
+            self.particle_cloud[idx].w = weight
 
     def publish_particle_cloud(self):
-
         particle_cloud_pose_array = PoseArray()
         particle_cloud_pose_array.header = Header(stamp=rospy.Time.now(), frame_id=self.map_topic)
-        particle_cloud_pose_array.poses
+        particle_cloud_pose_array.poses = []
 
         for part in self.particle_cloud:
             particle_cloud_pose_array.poses.append(part.pose)
 
         self.particles_pub.publish(particle_cloud_pose_array)
 
-
     def publish_estimated_robot_pose(self):
-
         robot_pose_estimate_stamped = PoseStamped()
         robot_pose_estimate_stamped.pose = self.robot_estimate
         robot_pose_estimate_stamped.header = Header(stamp=rospy.Time.now(), frame_id=self.map_topic)
         self.robot_estimate_pub.publish(robot_pose_estimate_stamped)
 
-
-
     def resample_particles(self):
-        # initialize empty array for particle weights
-        weightsarr = []
+        # Get the particle weights
+        weights = list(map(lambda particle: particle.w, self.particle_cloud))
 
-        # fill array with weights of existing particles
-        for i in self.particle_cloud:
-            weightsarr.append(i.w)
+        # Draw the random sample
+        population_indices = list(range(self.num_particles))
+        new_population_indices = np.random.choice(population_indices, size=self.num_particles, p=weights, replace=True)
 
-        # randomly pick particles based on weights
-        random_list = choices(self.particle_cloud, weights = weightsarr, k = self.num_particles)
-        self.particle_cloud = []
+        # Create the new particle cloud
+        new_particle_cloud = [self.particle_cloud[idx] for idx in new_population_indices]
+        self.particle_cloud = new_particle_cloud
 
-        # deep copy particles into the array, rather than pointing to instances
-        for p in random_list:
-            self.particle_cloud.append(copy.deepcopy(p))
-
-    def robot_scan_received(self, data):
-
+    def robot_scan_received(self, data: LaserScan):
         # wait until initialization is complete
         if not(self.initialized):
             return
@@ -258,12 +242,12 @@ class ParticleFilter:
             return
 
         # wait for a little bit for the transform to become avaliable (in case the scan arrives
-        # a little bit before the odom to base_footprint transform was updated)
+        # a little bit before the odom to base_footprint transform was updated) 
         self.tf_listener.waitForTransform(self.base_frame, self.odom_frame, data.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, data.header.frame_id, data.header.stamp)):
             return
 
-        # calculate the pose of the laser distance sensor
+        # calculate the pose of the laser distance sensor 
         p = PoseStamped(
             header=Header(stamp=rospy.Time(0),
                           frame_id=data.header.frame_id))
@@ -284,7 +268,6 @@ class ParticleFilter:
             self.odom_pose_last_motion_update = self.odom_pose
             return
 
-
         if self.particle_cloud:
 
             # check to see if we've moved far enough to perform an update
@@ -296,19 +279,21 @@ class ParticleFilter:
             curr_yaw = get_yaw_from_pose(self.odom_pose.pose)
             old_yaw = get_yaw_from_pose(self.odom_pose_last_motion_update.pose)
 
-            if (np.abs(curr_x - old_x) > self.lin_mvmt_threshold or
-                np.abs(curr_y - old_y) > self.lin_mvmt_threshold or
-                np.abs(curr_yaw - old_yaw) > self.ang_mvmt_threshold):
+            dx = np.abs(curr_x - old_x)
+            dy = np.abs(curr_y - old_y)
+            dt = np.abs(curr_yaw - old_yaw)
+
+            #print('Dx: {}, Dy: {}, DTheta: {}'.format(dx, dy, dt))
+
+            if (dx > self.lin_mvmt_threshold or
+                dy > self.lin_mvmt_threshold or
+                dt > self.ang_mvmt_threshold):
 
                 # This is where the main logic of the particle filter is carried out
-
                 self.update_particles_with_motion_model()
-
                 self.update_particle_weights_with_measurement_model(data)
 
-                # the function we use in resample does not require normalization of weight
-                #self.normalize_particles()
-
+                self.normalize_particles()
                 self.resample_particles()
 
                 self.update_estimated_robot_pose()
@@ -318,163 +303,139 @@ class ParticleFilter:
 
                 self.odom_pose_last_motion_update = self.odom_pose
 
+    def is_out_of_bounds(self, particle: Particle) -> bool:
+        """
+        Using the given map, this function determines whether the particle is out of
+        bounds with respect to the maze. A result of `True` means the particle is either outside
+        of the maze or inside a wall. `False` indicates a valid position.
+        """
+        # Get the xy indices based on the map
+        particle_x = particle.pose.position.x
+        particle_y = particle.pose.position.y
 
+        x_coord = int((particle_x - self.map.info.origin.position.x) / self.map.info.resolution)
+        y_coord = int((particle_y - self.map.info.origin.position.y) / self.map.info.resolution)
+
+        # Get the location's occupancy
+        map_idx = int(x_coord + y_coord * self.map.info.width)
+        occupancy = self.map.data[map_idx]
+
+        # An occupancy of 0 indicates a valid, unoccupied location
+        return occupancy != 0
 
     def update_estimated_robot_pose(self):
-        # based on the particles within the particle cloud, update the robot pose estimate
-        totalx = 0
-        totaly = 0
-        totalangle = 0
+        # Keep a running sum of the x, y (position), and angle (orientation)
+        x_sum, y_sum = 0.0, 0.0
+        angle_sum = 0.0
 
-        # iterate through all the particles and get the totals for these values
-        for p in self.particle_cloud:
-            totalx += p.pose.position.x
-            totaly += p.pose.position.y
-            # the z value is the only one we care about
-            totalangle += get_yaw_from_pose(p.pose)
+        for particle in self.particle_cloud:
+            x_sum += particle.pose.position.x
+            y_sum += particle.pose.position.y
+            angle_sum += particle.angle
 
-        # get the averages
-        avgx = totalx / self.num_particles
-        avgy = totaly / self.num_particles
-        avgangle = totalangle / self.num_particles
+        # Compute the average values for each field
+        x_avg = x_sum / self.num_particles
+        y_avg = y_sum / self.num_particles
+        angle_avg = angle_sum / self.num_particles
 
-        # make the new point and quaternion
-        avgPoint = Point(avgx, avgy, 0)
-        avgArray = quaternion_from_euler(0, 0, avgangle)
-        avgQuat = Quaternion(avgArray[0], avgArray[1], avgArray[2], avgArray[3])
+        # Create the estimated pose
+        orientation = quaternion_from_euler(0.0, 0.0, angle_avg)
+        self.robot_estimate = Pose(position=Point(x=x_avg, y=y_avg, z=0.0),
+                                  orientation=Quaternion(*orientation))
 
-        # make the new pose and update the estimate
-        newPose = Pose(avgPoint, avgQuat)
-        self.robot_estimate = newPose
+    def update_particle_weights_with_measurement_model(self, data: LaserScan):
+        # Unpack the angles. We downsample for efficiency.
+        angles = np.arange(0, len(data.ranges), 20, dtype=int)  # [D]
+        measured_angles = np.array([math.radians(angle) for angle in angles])  # [D]
+        #measured_distances = np.array([data.ranges[idx] for idx in angles])  # [D]
 
-        #maybe implement some standard deviation thing so it doesn't ignore lidar too early
-        # IMPORTANT DONT FORGET
+        # Clip the distances in to the valid range
+        measured_distances = np.zeros(shape=(len(angles), ))
 
-        # std_dev = pstdev(self.particle_cloud)
-        # #make r1 or r2 object, then publish object
-        # if std_dev < 200:
-        #     if self.robot_number == 1:
-        #         robot1_pose = r1()
-        #         robot1_pose.p = avgPoint
-        #         robot1_pose.q = avgQuat
-        #         self.robot1_estimated_pose_pub.publish(robot1_pose)
-        #     else:
-        #         robot2_pose = r2()
-        #         robot2_pose.p = avgPoint
-        #         robot2_pose.q = avgQuat
-        #         self.robot2_estimated_pose_pub.publish(robot2_pose)
+        for idx, angle_idx in enumerate(angles):
+            dist = data.ranges[angle_idx]  # Get the measured distances at this angle
 
-        if self.robot_number == 1:
-            robot1_pose = r1()
-            robot1_pose.p = avgPoint
-            robot1_pose.q = avgQuat
-            self.robot1_estimated_pose_pub.publish(robot1_pose)
-        else:
-            robot2_pose = r2()
-            robot2_pose.p = avgPoint
-            robot2_pose.q = avgQuat
-            self.robot2_estimated_pose_pub.publish(robot2_pose)
+            if np.isnan(dist):
+                dist = data.range_max  # Treat NaN distances as infinite and clip to the largest distances
+            elif abs(dist) < 1e-7:
+                dist = data.range_max  # On the turtlebot, a distance of 0 is out of range, so we use the largest distance
 
-    def update_particle_weights_with_measurement_model(self, data):
-        # THIS IS WHERE WE TAKE INTO ACCOUNT THE OTHER ROBOT'S ESTIMATED POSE
-        # DONT TAKE INTO ACCOUNT THE ANGLE OF ROBOT A THAT HITS THE ESTIMATED POST OF ROBOT B FOR UPDATING 
-        # ROBOT A'S PARTICLE WEIGHTS AND VICE VERSA.
+            dist = max(min(dist, data.range_max), data.range_min)  # Clip distances into the valid range
+            measured_distances[idx] = dist
 
-        # Monte Carlo Localization (MCL) ALgorithm
+        # Process each particle
+        for particle_idx, particle in enumerate(self.particle_cloud):
+            if self.is_out_of_bounds(particle):
+                particle.w = -1e7  # Use a large negative (log) weight if the particle is out of bounds
+            else:
+                # Unpack the current particle
+                particle_x = particle.pose.position.x
+                particle_y = particle.pose.position.y
+                particle_angle = particle.angle
 
-        # Generate the lists of angles in radians and degrees
-        lidar_angles = [np.pi/4, np.pi/2, .72*np.pi, 1.28*np.pi, 1.5*np.pi, 1.75*np.pi, 2*np.pi]
-        lidar_angles_deg = [45, 90, 130, 230, 270, 315, 360]
-        robot_sensor_distances = []
-        # collect robot's sensor measurements for given angles:
-        for angle in lidar_angles_deg:
-            robot_sensor_distances.append(data.ranges[angle - 1])
-        # compute the max distance for cases when dist=nan, set to the max
-        max_dist = max(robot_sensor_distances)
+                # Rotate the position for each determined angle
+                offset_angles = particle_angle + measured_angles
+                x_rotated = particle_x + measured_distances * np.cos(offset_angles)  # [D]
+                y_rotated = particle_y + measured_distances * np.sin(offset_angles)  # [D]
 
-        # loop through each particle
-        for p in self.particle_cloud:
-            # start with the weight at 1
-            q = 1
+                # Use the likelihood field to get the closest obstacle distances for each rotated position
+                distances = np.zeros(shape=(len(angles, )))  # [D]
+                for idx in list(range(len(angles))):
+                    dist = self.likelihood_field.get_closest_obstacle_distance(x=x_rotated[idx], y=y_rotated[idx])
+                    distances[idx] = dist
 
-            # set an index to iterate through the lidar_angles
-            index = 0
-            # loop through each laser range finder measurement recieved by robot
-            for k in robot_sensor_distances:
-                # compute the projected x and y using the formula
-                p_projected_x = p.pose.position.x + k*math.cos(get_yaw_from_pose(p.pose) + lidar_angles[index])
-                p_projected_y = p.pose.position.y + k*math.sin(get_yaw_from_pose(p.pose) + lidar_angles[index])
-
-                # built-in func from likelihood_field.py, to compute the
-                # distance from the nearest obstacle
-                dist = self.likelihood.get_closest_obstacle_distance(p_projected_x, p_projected_y)
-
-                # if dist is nan, the projection is out of bounds, so we make
-                # the dist the max dist in the array so that the weight will
-                # be low, as this is not a good prediction if the projection
-                # is out of bounds
-                if math.isnan(dist) == True:
-                    dist  = max_dist # dist = max distance
-                q = q*compute_prob_zero_centered_gaussian(dist, 0.1)
-                index += 1
-            p.w = q
-
+                # Compute the update (log) weight. We use the log weight instead of the normal weight
+                # for better numerical stability due to the sum (instead of product) aggregation.
+                weights = compute_prob_zero_centered_gaussian(distances, sd=0.1)
+                particle.w = np.sum(np.log(weights))
+    
     def update_particles_with_motion_model(self):
-        # based on the how the robot has moved (calculated from its odometry), we'll  move
-        # all of the particles correspondingly
-
+        # Unpack the current and previous positions
         curr_x = self.odom_pose.pose.position.x
-        old_x = self.odom_pose_last_motion_update.pose.position.x
         curr_y = self.odom_pose.pose.position.y
+
+        old_x = self.odom_pose_last_motion_update.pose.position.x
         old_y = self.odom_pose_last_motion_update.pose.position.y
+
         curr_yaw = get_yaw_from_pose(self.odom_pose.pose)
         old_yaw = get_yaw_from_pose(self.odom_pose_last_motion_update.pose)
-        # caluclate robots "up" and "sideways" changes based on its 'x' and 'y' movements
-        delta_up = curr_x - old_x
-        delta_sideways = curr_y - old_y
 
-        # check if robot is traveling backwards, flag_dir = -1
-        flag_dir = 1
-        if delta_up < 0:
-            flag_dir = -1
-        # calculate distance robot travels (hypotenuse)
-        rob_hypot = math.sqrt(delta_up**2 + delta_sideways**2)
-        # calculate robot's change in yaw
-        delta_yaw = curr_yaw - old_yaw
+        # Get the differences in position and angle
+        dx, dy = curr_x - old_x, curr_y - old_y
+        d_theta = curr_yaw - old_yaw
+        displacement = math.sqrt(dx * dx + dy * dy)
 
-        for p in self.particle_cloud:
-            # makes some noise for position and angle
-            move_noise_x = gauss(0, .069)
-            move_noise_y = gauss(0, .069)
-            move_noise_angle = gauss(0, np.pi/36)
-            # for the partcle p to mimic a "sideways" movement from the robot:
-            p_yaw = get_yaw_from_pose(p.pose)
-            # for the particle p to mimix an "up"  movement from the robot:
-            p_side = rob_hypot*math.sin(p_yaw + delta_yaw)
-            p_up = rob_hypot*math.cos(p_yaw + delta_yaw)
-            # update particle direction from robot's updated yaw
-            p_new_yaw = p_yaw + delta_yaw + move_noise_angle
-            p_new_yaw_quat = quaternion_from_euler(0.0, 0.0, p_new_yaw)
-            p_new_dir = Quaternion(p_new_yaw_quat[0], p_new_yaw_quat[1], p_new_yaw_quat[2], p_new_yaw_quat[3])
-            # set new particle pos. and yaw based off robot's movements:
-            # the 'x' direction is UP
-            p.pose.position.x = p.pose.position.x + (p_up+move_noise_x)*flag_dir
-            # the 'y' direction is SIDEWAYS
-            p.pose.position.y = p.pose.position.y + (p_side+move_noise_y)*flag_dir
-            # particle's new yaw
-            p.pose.orientation = p_new_dir
+        # Get the initial rotation angle for the Rotate-Translate-Rotate model
+        init_rot_theta = np.arctan2(dy, dx) - old_yaw
 
-    def robot_1_pose_recieved(self, msg1):
-        other_pose = Pose(msg1.p, msg1.q)
-        self.other_robot_pose = other_pose
-        print(other_pose)
+        # Generate noise terms in batches for efficiency
+        x_noise = np.random.uniform(low=-0.01, high=0.01, size=(self.num_particles, ))
+        y_noise = np.random.uniform(low=-0.01, high=0.01, size=(self.num_particles, ))
+        theta_noise = np.random.uniform(low=-0.01, high=0.01, size=(self.num_particles, ))
 
-    def robot_2_pose_recieved(self, msg2):
-        other_pose = Pose(msg2.p, msg2.q)
-        self.other_robot_pose = other_pose
-        print(other_pose)
+        updated_particles = []
 
-if __name__=="__main__":
+        # Using rotate then translate for now.
+        for particle_idx, particle in enumerate(self.particle_cloud):
+            px, py = particle.pose.position.x, particle.pose.position.y
+            p_theta = particle.angle
+
+            # (1) First, rotate the particle. The particle will travel along this trajectory
+            rot_theta = p_theta + init_rot_theta
+
+            # (2) Then, translate the particle
+            new_x = px + displacement * math.cos(rot_theta) + x_noise[particle_idx]
+            new_y = py + displacement * math.sin(rot_theta) + y_noise[particle_idx]
+
+            # (3) Finally, set the orientation after translation
+            new_theta = p_theta + d_theta + theta_noise[particle_idx]
+
+            new_particle = Particle.make(x=new_x, y=new_y, angle=new_theta, weight=particle.w)
+            updated_particles.append(new_particle)
+
+        self.particle_cloud = updated_particles
+
+
+if __name__ == "__main__":
     pf = ParticleFilter()
-
     rospy.spin()

@@ -185,6 +185,7 @@ class CellGraph(object):
                 self.cell_array[x][y].recalculate_fn()
 
     def get_path(self, start_coord, end_coord):
+        print("AStarPlanner::get_path")
         start_cell = self.get_cell(start_coord[0], start_coord[1])
         end_cell = self.get_cell(end_coord[0], end_coord[1])
 
@@ -291,7 +292,7 @@ AStarPlanner -
 """
 class AStarPlanner(object):
     def __init__(self):
-        rospy.init_node("path_planner")
+        # rospy.init_node("path_planner")
         self.map_topic = "map"
         
         # For testing purposes
@@ -300,7 +301,7 @@ class AStarPlanner(object):
         rospy.sleep(1)
 
         # inialize our map
-        self.map = OccupancyGrid()
+        self.map = None
 
         # subscribe to the map server
         rospy.Subscriber(self.map_topic, OccupancyGrid, self.get_map)
@@ -316,22 +317,24 @@ class AStarPlanner(object):
         for performing A-star on this map
     """
     def get_map(self, data):
-        if self.cell_graph is not None:
-            #print("Callback fn for get_map called again!")
-            sys.exit(-1)
+        print("AStarPlanner::get_map")
 
         self.map = data
-        self.cell_graph = CellGraph(self.map)
-        
-        self.poses = self.cell_graph.experiment_poses
-        self.publish_poses()
 
-        start_coord = (185, 115)
-        end_coord = (195, 180)
+    def get_path(self, start_coord=(185, 115), end_coord=(195, 180)):
+        if self.map is None:
+            print("Can not plan path, no map")
+            sys.exit(-1)
+
+        self.cell_graph = CellGraph(self.map)
         path = self.cell_graph.get_path(start_coord, end_coord)
 
         self.poses = path
         self.publish_poses()
+
+        print("Done planning path, path pose len: ", len(self.poses))
+
+        return self.poses
 
 
     def publish_poses(self):

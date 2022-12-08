@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   message_generation
+  actionlib
+  move_base_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -53,6 +55,8 @@ add_message_files(
    FILES
    tom_msg.msg
    jerry_msg.msg
+   PerceivedLocation.msg
+   AmbulanceHonk.msg
 )
 
 ## Generate services in the 'srv' folder

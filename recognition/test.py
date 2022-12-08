@@ -5,10 +5,13 @@ import math
 from tensorflow import keras
 from PIL import Image, ImageOps
 
+# Not needed now, this was going to help with integration later.
 CONFIDENT_CONSEC_THRESHOLD = 5
 
 def main():
+    # Check which gesture we want to see is being done, i.e. the index
     current_index = 0
+    # Increment the count when we get the same index multiple times in a row
     consecutive_count = 0
 
     np.set_printoptions(suppress=True)
@@ -89,13 +92,17 @@ def main():
 
             print("Destination Number: ", index)
 
+            # Update the consecutive count as needed
             if index == current_index:
                 consecutive_count += 1
+            # Change the index if the gesture changed
             else:
                 consecutive_count = 1
                 current_index = index
-            if consecutive_count >= CONFIDENT_CONSEC_THRESHOLD:
-                return current_index
+
+            # End the run if a gesture is detected multiple frames in a row
+            # if consecutive_count >= CONFIDENT_CONSEC_THRESHOLD:
+            #     return current_index
             cv2.imshow("Full image", backgroundImage)
         cv2.waitKey(1)
 

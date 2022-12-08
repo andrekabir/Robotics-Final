@@ -27,7 +27,19 @@ from likelihood_field import LikelihoodField
 import heapq as hq
 
 # Width of bot in metres
-TURTLEBOT_WIDTH = 0.3
+TURTLEBOT_WIDTH = 0.35
+
+def get_yaw_from_pose(p):
+    """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
+
+    yaw = (euler_from_quaternion([
+            p.orientation.x,
+            p.orientation.y,
+            p.orientation.z,
+            p.orientation.w])
+            [2])
+
+    return yaw
 
 def make_pose_from_idx(valid_idx: int, info) -> Pose:
     resolution, width, origin = info.resolution, info.width, info.origin
@@ -204,6 +216,10 @@ class CellGraph(object):
             if current_cell == end_cell:
                 break
 
+            # if current_cell.fx == math.inf:
+            #     print("Path can not be found!!")
+            #     exit(-1)
+        
             #print("Current cell has fx: ", current_cell.fx)
             current_cell.explored = True
             cost_ngbr = 1
@@ -232,40 +248,19 @@ class CellGraph(object):
                         hq.heapify(open_cells)
                     
                     next_cell.parent = current_cell
-        
+
         tmp_cell = end_cell
         path = []
         while tmp_cell is not None:
             path.append(tmp_cell.get_pose(self.raw_map.info))
             tmp_cell = tmp_cell.parent
         
-        # Change the path so that each pose points to the next pose in the path
-
-        #first_x = path[0].position.x
-        #first_y = path[0].position.y
-
-        #second_x = path[1].position.x
-        #second_y = path[1].position.y
-
-        #if second_x == first_x:
-        #    yaw = 0.0
-        #else:
-        #    yaw = math.tan((second_y - first_y) / (second_x - first_x))
-
-        #converted_value = quaternion_from_euler(0.0, 0.0, yaw)
-        #path[0].orientation = converted_value
-
         for index in range(1, len(path)):
             first_x = path[index - 1].position.x
             first_y = path[index - 1].position.y
 
             second_x = path[index].position.x
             second_y = path[index].position.y
-
-            #print("first x: ", first_x)
-            #print("first y: ", first_y)
-            #print("second x: ", second_x)
-            #print("second y: ", second_y)
 
             if second_x == first_x:
                 yaw = -(math.pi/2)
@@ -281,8 +276,26 @@ class CellGraph(object):
             converted_value = quaternion_from_euler(0.0, 0.0, yaw)
             quat_value = Quaternion(converted_value[0], converted_value[1], converted_value[2], converted_value[3])
             path[index - 1].orientation = quat_value
+        
+        reduced_path = self.find_reduced_path(path)
+        return reduced_path
+        # return path
+    
+    
+    def find_reduced_path(self, path):
+        curr_yaw =  get_yaw_from_pose(path[0])
+        reduced = []
+        for i in path:
+            if get_yaw_from_pose(i) != curr_yaw:
+                print("Adding a point to reduced arr")
+                reduced.append(copy.deepcopy(i))
+                curr_yaw = get_yaw_from_pose(i)
+            else: 
+                continue
+        return reduced
 
-        return path
+
+
 
 
 """
@@ -321,7 +334,7 @@ class AStarPlanner(object):
 
         self.map = data
 
-    def get_path(self, start_coord=(185, 115), end_coord=(195, 180)):
+    def get_path(self, start_coord=(180, 115), end_coord=(195, 180)):
         if self.map is None:
             print("Can not plan path, no map")
             sys.exit(-1)

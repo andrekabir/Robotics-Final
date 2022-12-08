@@ -38,7 +38,7 @@ def get_yaw_from_pose(p):
 
     return yaw
 
-def get_distance_between_points(point1: Point, point2: Point):
+def get_lin_dist_between_points(point1: Point, point2: Point):
     x1 = point1.x
     y1 = point1.y
     x2 = point2.x
@@ -48,21 +48,25 @@ def get_distance_between_points(point1: Point, point2: Point):
     y_tot_dist = (y2 - y1)
 
     return math.sqrt((x_tot_dist ** 2) + (y_tot_dist ** 2))
-    
 
+def get_ang_dist_between_poses(pose1: Pose, pose2: Pose):
+    yaw1 = get_yaw_from_pose(pose1)
+    yaw2 = get_yaw_from_pose(pose2)
+    return yaw2 - yaw1
 
 class movement(object):
     def __init__(self):
         rospy.init_node("movement")
 
-        self.robot_speed = 0.1
+        self.robot_linear_speed = 0.1
+        self.robot_angular_speed = 0.1
 
         self.astar = AStarPlanner()
         rospy.sleep(4)
         self.path_poses = self.astar.get_path()
         print("PATH is as follows: ")
 
-        self.linear_distances = self.get_distance_array(self.path_poses)
+        self.linear_distances, self.angular_distances = self.get_linear_distance_array(self.path_poses)
         self.curr_target_idx = 0
         # TODO Get angular distances similarly
 
@@ -74,13 +78,25 @@ class movement(object):
 
         rospy.sleep(1)
 
-    def get_distance_array(self, pose_array):
-        distance_arr = []
+    def get_linear_distance_array(self, pose_array):
+        lin_distance_arr = []
+        ang_distance_arr = []
         num_poses = len(pose_array)
+
+        print("Angular distances: ")
+
         for i in range(num_poses - 1):
-            hypotenuse = get_distance_between_points(pose_array[i].position, pose_array[i+1].position)
-            distance_arr.append(hypotenuse)
-        return distance_arr
+            lin_dist = get_lin_dist_between_points(pose_array[i].position, pose_array[i+1].position)
+            ang_dist = get_ang_dist_between_poses(pose_array[i], pose_array[i+1])
+            lin_distance_arr.append(lin_dist)
+            ang_distance_arr.append(ang_dist)
+            print(ang_dist)
+        
+        return lin_distance_arr, ang_distance_arr
+    
+    def get_angular_distance_array(self, pose_array):
+        distance_arr = []
+        
 
 
     def odom_callback(self, data):
@@ -88,20 +104,34 @@ class movement(object):
         if self.old_odom is None:
             self.old_odom = curr_odom_position
         
-        distance_travelled = get_distance_between_points(curr_odom_position, self.old_odom)
+        distance_travelled = get_lin_dist_between_points(curr_odom_position, self.old_odom)
 
         if distance_travelled > self.linear_distances[self.curr_target_idx]:
+            self.cmd_vel_pub.publish(Twist())
+            rospy.sleep(1)
+
+            radians = self.angular_distances[self.curr_target_idx]
+            time_to_sleep = abs(radians / self.robot_angular_speed)
+
+            twist_cmd = Twist()
+            twist_cmd.angular.z = self.robot_angular_speed
+            if radians < 0:
+                twist_cmd.angular.z *= -1
+
+            if radians != 0.0:
+                self.cmd_vel_pub.publish(twist_cmd)
+            rospy.sleep(time_to_sleep)
+
             self.curr_target_idx += 1
             self.old_odom = curr_odom_position
+
             print("Moved the first distance idx #", self.curr_target_idx)
             self.cmd_vel_pub.publish(Twist()) # stop the bot
-            # TODO We need to turn here 
-            rospy.sleep(4)
 
             return
         
         twist_cmd = Twist()
-        twist_cmd.linear.x = self.robot_speed
+        twist_cmd.linear.x = self.robot_linear_speed
         self.cmd_vel_pub.publish(twist_cmd)
 
 """

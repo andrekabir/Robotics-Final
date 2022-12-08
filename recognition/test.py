@@ -2,9 +2,7 @@ import cv2
 from cvzone.HandTrackingModule import HandDetector
 import numpy as np
 import math
-import time
 from tensorflow import keras
-import h5py
 from PIL import Image, ImageOps
 
 CONFIDENT_CONSEC_THRESHOLD = 5

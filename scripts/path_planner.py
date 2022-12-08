@@ -4,34 +4,28 @@ import rospy
 import copy
 import sys
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray, PoseStamped
-from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Header, String
+from geometry_msgs.msg import Quaternion, Point, Pose, PoseArray
+from std_msgs.msg import Header
 
-import tf
-from tf import TransformListener
-from tf import TransformBroadcaster
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
-import numpy as np
 from numpy.random import random_sample
 import math
 
 from random import randint, random, uniform, choices, gauss
-
-# from Robotics_Final.msg import r1
-# from Robotics_Final.msg import r2
 
 from likelihood_field import LikelihoodField
 
 import heapq as hq
 
 # Width of bot in metres
-TURTLEBOT_WIDTH = 0.35
+TURTLEBOT_WIDTH = 0.3
 
+""" 
+    get_yaw_from_pose
+    - A helper function that takes in a Pose object (geometry_msgs) and returns yaw
+"""
 def get_yaw_from_pose(p):
-    """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
-
     yaw = (euler_from_quaternion([
             p.orientation.x,
             p.orientation.y,
@@ -41,30 +35,24 @@ def get_yaw_from_pose(p):
 
     return yaw
 
-def make_pose_from_idx(valid_idx: int, info) -> Pose:
-    resolution, width, origin = info.resolution, info.width, info.origin
-    x = resolution * int(valid_idx % width) + origin.position.x
-    y = resolution * int(valid_idx / width) + origin.position.y
-    pose = make_pose(x=x, y=y, angle=0.0)
-    return pose
-
-     
-
+"""
+    make_pose
+    - Convenience method to make a point on a 2D plane with a single orientation angle (yaw / z)
+"""
 def make_pose(x: float, y: float, angle: float) -> Pose:
-    """
-    Convenience method to make a point on a 2D plane with a single orientation angle (yaw / z)
-    """
     point = Point(x=x, y=y, z=0.0)
     orientation = quaternion_from_euler(0.0, 0.0, angle)
     pose = Pose(position=point,
                 orientation=Quaternion(*orientation))
 
     return pose
-    
-def explore_neighbours(pose):
-    
-    neighbours = []
 
+"""
+    explore_nighbours
+    - Returns an array of neighbours, given a pose
+"""
+def explore_neighbours(pose):
+    neighbours = []
     for xd,yd in [(0,0.1),(-0.1,0),(0,-0.1),(.1,0)]:
         neighbours.append(make_pose(pose.position.x+xd, 
                                     pose.position.y+yd,
@@ -72,7 +60,8 @@ def explore_neighbours(pose):
     return neighbours
 
 """
-    Cell class: A unit on which A-star will operate
+    Cell class
+    - A unit on which A-star will operate
 """
 class Cell(object):
     def __init__(self, x, y, obstacle_distance):
@@ -108,7 +97,7 @@ class Cell(object):
 
 """
     CellGraph
-        - A graph data structure to perform A-Star on
+    - A graph data structure to perform A-Star on
 """
 class CellGraph(object):
 
@@ -122,35 +111,20 @@ class CellGraph(object):
 
         # Get the occupancy list
         occupancy_list = map.data
-        #print("Occupancy list has size: ", len(occupancy_list))
 
         # Initialize 2D Array of cells corresponsing to valid occupancy values
         self.cell_array = {}
         self.experiment_poses = []
 
-        valid_locs = len([i for i in occupancy_list if i >= 0])
-
-        length = 0
         for (i, occupied) in enumerate(occupancy_list):
             if occupied != 0:
                 continue # Location outside map
 
             x, y = int(i % map.info.width), int(i / map.info.width)
-            #print("Valid pos: ", x, y)
             if x not in self.cell_array:
                 self.cell_array[x] = {}
 
             self.cell_array[x][y] = Cell(x=x, y=y, obstacle_distance=self.likelihood_field.get_closest_obstacle_distance(x, y, transform=False))
-
-            length += 1
-
-        #print("Valid points: ", length)
-
-        length = 0
-        for l in self.cell_array:
-            length += len(self.cell_array[l])
-
-        #print("Number of cells in our graph: ", length)
 
         self.experiment_poses = [self.cell_array[180][115].get_pose(self.raw_map.info), self.cell_array[199][180].get_pose(self.raw_map.info)]
 
@@ -178,6 +152,9 @@ class CellGraph(object):
 
         return (x, y)
 
+    """
+        rms_distance: absolute distance between 2 coords used as a heuristic
+    """
     def rms_distance(self, coord1, coord2):
         x_0, y_0 = coord1
         x_1, y_1 = coord2
@@ -196,6 +173,9 @@ class CellGraph(object):
                 self.cell_array[x][y].gx = 0
                 self.cell_array[x][y].recalculate_fn()
 
+    """
+        get_path: Runs A* on CellGraph
+    """
     def get_path(self, start_coord, end_coord):
         print("AStarPlanner::get_path")
         start_cell = self.get_cell(start_coord[0], start_coord[1])
@@ -216,11 +196,6 @@ class CellGraph(object):
             if current_cell == end_cell:
                 break
 
-            # if current_cell.fx == math.inf:
-            #     print("Path can not be found!!")
-            #     exit(-1)
-        
-            #print("Current cell has fx: ", current_cell.fx)
             current_cell.explored = True
             cost_ngbr = 1
 
@@ -265,21 +240,16 @@ class CellGraph(object):
             if second_x == first_x:
                 yaw = -(math.pi/2)
             else:
-                #print("here")
                 if second_x < first_x:
                     yaw = math.pi + (math.atan((second_x - first_x) / (second_y - first_y)))
                 else:
                     yaw = math.atan((second_x - first_x) / (second_y - first_y))
 
-                #yaw = math.tan((second_y - first_y) / (second_x - first_x))
-                #print(yaw)
             converted_value = quaternion_from_euler(0.0, 0.0, yaw)
             quat_value = Quaternion(converted_value[0], converted_value[1], converted_value[2], converted_value[3])
             path[index - 1].orientation = quat_value
         
-        reduced_path = self.find_reduced_path(path)
-        return reduced_path
-        # return path
+        return path
     
     
     def find_reduced_path(self, path):
@@ -292,7 +262,7 @@ class CellGraph(object):
                 curr_yaw = get_yaw_from_pose(i)
             else: 
                 continue
-        return reduced
+        return reduced[1:]
 
 
 
@@ -305,7 +275,6 @@ AStarPlanner -
 """
 class AStarPlanner(object):
     def __init__(self):
-        # rospy.init_node("path_planner")
         self.map_topic = "map"
         
         # For testing purposes
@@ -334,7 +303,7 @@ class AStarPlanner(object):
 
         self.map = data
 
-    def get_path(self, start_coord=(180, 115), end_coord=(195, 180)):
+    def get_path(self, start_coord=(180, 115), end_coord=(200, 180)):
         if self.map is None:
             print("Can not plan path, no map")
             sys.exit(-1)
@@ -359,7 +328,6 @@ class AStarPlanner(object):
             pose_array.poses.append(part)
 
         self.particles_pub.publish(pose_array)
-        #print("Number of valid points are: ", len(self.poses))
 
 
 if __name__ == "__main__":

@@ -2,16 +2,15 @@ import cv2
 from cvzone.HandTrackingModule import HandDetector
 import numpy as np
 import math
-import time
 from tensorflow import keras
-import h5py
 from PIL import Image, ImageOps
 
 CONFIDENT_CONSEC_THRESHOLD = 5
 
-def main(consecutive_count, current_index):
+def main():
+    current_index = 0
+    consecutive_count = 0
 
-    # Disable scientific notation for clarity
     np.set_printoptions(suppress=True)
 
     # Load the model
@@ -27,8 +26,6 @@ def main(consecutive_count, current_index):
 
     # width and height of photos
     dimension = 400
-
-    labels = ["one", "two", "three"]
 
     while True:
         # capture the the frame and report the success on this capture
@@ -88,8 +85,9 @@ def main(consecutive_count, current_index):
             class_name = class_names[index]
             confidence_score = prediction[0][index]
 
-            # print("predicted hand: ", prediction)
-            # print("index, ", index)
+            # This ends the block of code provided by teachable machine
+
+            print("Destination Number: ", index)
 
             if index == current_index:
                 consecutive_count += 1

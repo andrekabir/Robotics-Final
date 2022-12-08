@@ -26,6 +26,7 @@ from random import randint, random, uniform, choices, gauss
 
 from path_planner import AStarPlanner
 
+# Taken from paticle filter, to help work with quaternions
 def get_yaw_from_pose(p):
     """ A helper function that takes in a Pose object (geometry_msgs) and returns yaw"""
 
@@ -38,6 +39,7 @@ def get_yaw_from_pose(p):
 
     return yaw
 
+# Compute the length of the hypotenuse between two points
 def get_lin_dist_between_points(point1: Point, point2: Point):
     x1 = point1.x
     y1 = point1.y
@@ -49,159 +51,102 @@ def get_lin_dist_between_points(point1: Point, point2: Point):
 
     return math.sqrt((x_tot_dist ** 2) + (y_tot_dist ** 2))
 
+# Find the difference in yaw between poses
+
 def get_ang_dist_between_poses(pose1: Pose, pose2: Pose):
     yaw1 = get_yaw_from_pose(pose1)
     yaw2 = get_yaw_from_pose(pose2)
     return yaw2 - yaw1
 
+# The main class for all of the movement
+
 class movement(object):
     def __init__(self):
         rospy.init_node("movement")
 
+        # Fix the speeds
         self.robot_linear_speed = 0.1
         self.robot_angular_speed = 0.1
 
+        # Take in the AStarPlanner, wait for it to load, and then get the path
         self.astar = AStarPlanner()
         rospy.sleep(4)
         self.path_poses = self.astar.get_path()
-        print("PATH is as follows: ")
 
+        # Call later functions to get the linear distances and angular changes between points
         self.linear_distances, self.angular_distances = self.get_linear_distance_array(self.path_poses)
+
+        # The current point that the robot is on
         self.curr_target_idx = 0
-        # TODO Get angular distances similarly
 
         self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-        # self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
 
+        # Subscribe to the odom to figure out when we have traveled the desired distance
         rospy.Subscriber("odom", Odometry, self.odom_callback)
         self.old_odom = None
 
         rospy.sleep(1)
 
+    # Output the linear distances and angular changes between points, putting these in arrays
     def get_linear_distance_array(self, pose_array):
         lin_distance_arr = []
         ang_distance_arr = []
         num_poses = len(pose_array)
 
-        print("Angular distances: ")
-
+        # Go through all the poses to examine these changes between points
         for i in range(num_poses - 1):
             lin_dist = get_lin_dist_between_points(pose_array[i].position, pose_array[i+1].position)
             ang_dist = get_ang_dist_between_poses(pose_array[i], pose_array[i+1])
             lin_distance_arr.append(lin_dist)
             ang_distance_arr.append(ang_dist)
-            print(ang_dist)
         
         return lin_distance_arr, ang_distance_arr
-    
-    def get_angular_distance_array(self, pose_array):
-        distance_arr = []
-        
 
-
+    # Taking in the data from the odom to determine our movement
     def odom_callback(self, data):
+        # Current position
         curr_odom_position = data.pose.pose.position
+
+        # If we're on the first point, assign the old_odom as the first point, i.e. the current odom position
         if self.old_odom is None:
             self.old_odom = curr_odom_position
         
+        # Find the distance between the previous point, i.e. the old odom, and the current position
         distance_travelled = get_lin_dist_between_points(curr_odom_position, self.old_odom)
 
+        # Check if we've travelled the required distance between these particular two points
         if distance_travelled > self.linear_distances[self.curr_target_idx]:
+            # Make the robot stop
             self.cmd_vel_pub.publish(Twist())
             rospy.sleep(1)
 
+            # Find the radians needed in the turn, sleep as long as necessary to complete the required turn
             radians = self.angular_distances[self.curr_target_idx]
             time_to_sleep = abs(radians / self.robot_angular_speed)
 
+            # Make the robot rotate for the next movement, left or right depending on the radian sign
             twist_cmd = Twist()
             twist_cmd.angular.z = self.robot_angular_speed
             if radians < 0:
                 twist_cmd.angular.z *= -1
 
+            # If we have to rotate, publish the turn and sleep
             if radians != 0.0:
                 self.cmd_vel_pub.publish(twist_cmd)
             rospy.sleep(time_to_sleep)
 
+            # Update the pose we're looking how far we are from now, stop the robot from turning
             self.curr_target_idx += 1
             self.old_odom = curr_odom_position
 
-            print("Moved the first distance idx #", self.curr_target_idx)
             self.cmd_vel_pub.publish(Twist()) # stop the bot
 
             return
         
+        # Make the robot move forward regardless of whether we needed to turn or not
         twist_cmd = Twist()
         twist_cmd.linear.x = self.robot_linear_speed
         self.cmd_vel_pub.publish(twist_cmd)
-
-"""
-    def odom_callback_old(self, data):
-        # print("ODOM Data", data)
-        if not self.odom_flag:
-            self.old_odom = data
-            self.odom_flag = True
-        new_odom = data
-        
-        # distance_moved = abs(self.old_odom.pose.pose.position.x - new_odom.pose.pose.position.x)
-        distance_moved = get_distance_between_points(self.old_odom.pose.pose.position, new_odom.pose.pose.position)
-        distance_to_move = self.distance_move(self.pose_idx)
-
-        yaw_moved = abs(get_yaw_from_pose(self.old_odom.pose.pose) - get_yaw_from_pose(new_odom.pose.pose))
-        yaw_to_move = self.yaw_move(self.pose_idx + 1)
-        print()
-        print("distance to move: ",distance_to_move,"distance_moved alr:",distance_moved)
-        print("Yaw to move: ",yaw_to_move, "yaw moved alr:",yaw_moved)
-        print("Following Point", self.pose_idx)
-        # print("Poses Arr:", self.path_poses)
-
-        
-        
-        if self.move_flag:
-            print("Moving Forward")
-            if (distance_moved > distance_to_move):
-                my_twist = Twist(
-                linear=Vector3(0.00, 0, 0),
-                angular=Vector3(0, 0, 0.0)
-                )
-                self.cmd_vel_pub.publish(my_twist)
-                # rospy.sleep(1)
-              
-                self.move_flag = False
-            else:
-                my_twist = Twist(
-                linear=Vector3(0.05, 0, 0),
-                angular=Vector3(0, 0, 0.0)
-                )
-                self.cmd_vel_pub.publish(my_twist)
-        else:
-            print("Turning")
-            if (yaw_moved > yaw_to_move):
-                my_twist = Twist(
-                linear=Vector3(0.00, 0, 0),
-                angular=Vector3(0, 0, 0.0)
-                )
-                self.cmd_vel_pub.publish(my_twist)
-                rospy.sleep(5)
-                self.pose_idx += 1
-                self.move_flag = True
-                self.old_odom = new_odom
-                self.odom_flag = False
-
-            else:
-                if yaw_to_move > 0:
-                    multi = -1
-                else:
-                    multi = 1
-                my_twist = Twist(
-                linear=Vector3(00, 0, 0),
-                angular=Vector3(0, 0, 0.1*multi)
-                )
-                self.cmd_vel_pub.publish(my_twist)
-                # rospy.sleep(1)
-"""
-
-        # print("distance_moved",distance_moved)
-
 
 if __name__ == "__main__":
     movement_obj = movement()

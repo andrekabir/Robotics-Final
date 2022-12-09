@@ -117,7 +117,7 @@ class ParticleFilter:
         self.tf_broadcaster = TransformBroadcaster()
 
         # generate the likelihood field
-        self.likelihood = LikelihoodField()
+        self.likelihood = None
 
         # give things enough time to generate
         rospy.sleep(5)
@@ -131,7 +131,8 @@ class ParticleFilter:
     def get_map(self, data):
 
         self.map = data
-
+        self.likelihood = LikelihoodField(maze_map=self.map)
+        # generate the likelihood field
 
     def initialize_particle_cloud(self):
 
@@ -221,13 +222,15 @@ class ParticleFilter:
             self.particle_cloud.append(copy.deepcopy(p))
 
     def robot_scan_received(self, data):
-
+        print("here1")
         # wait until initialization is complete
         if not(self.initialized):
+            print("here2")
             return
 
         # we need to be able to transfrom the laser frame to the base frame
         if not(self.tf_listener.canTransform(self.base_frame, data.header.frame_id, data.header.stamp)):
+            print("here3")
             return
 
         # wait for a little bit for the transform to become avaliable (in case the scan arrives
@@ -235,7 +238,6 @@ class ParticleFilter:
         self.tf_listener.waitForTransform(self.base_frame, self.odom_frame, data.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, data.header.frame_id, data.header.stamp)):
             return
-
         # calculate the pose of the laser distance sensor
         p = PoseStamped(
             header=Header(stamp=rospy.Time(0),
@@ -290,6 +292,8 @@ class ParticleFilter:
                 self.publish_estimated_robot_pose()
 
                 self.odom_pose_last_motion_update = self.odom_pose
+        self.publish_estimated_robot_pose()
+
 
 
 
@@ -324,8 +328,9 @@ class ParticleFilter:
         # Monte Carlo Localization (MCL) ALgorithm
 
         # Generate the lists of angles in radians and degrees
-        lidar_angles = [np.pi/4, np.pi/2, .75*np.pi, np.pi, 1.25*np.pi, 1.5*np.pi, 1.75*np.pi, 2*np.pi]
-        lidar_angles_deg = [45, 90, 135, 180, 225, 270, 315, 360]
+        # lidar_angles = [np.pi/4, np.pi/2, math.radian(120), 1.25*np.pi, 1.5*np.pi, 1.75*np.pi, 2*np.pi]
+        lidar_angles_deg = [45, 90, 120, 240, 270, 315, 360]
+        lidar_angles = [math.radians(theta) for theta in lidar_angles_deg]
         robot_sensor_distances = []
         # collect robot's sensor measurements for given angles:
         for angle in lidar_angles_deg:

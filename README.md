@@ -3,7 +3,16 @@
 ## Project Description
 Based on various challenges we faced along the way, we had to repeatedly redefine our goals and the scope. In the end, our final project topic was to implement gesture recognition (computer vision algorithm) and an A* path following algorithm, which also included having the physical robot follow this path in the maze. This project idea was inspired by the idea of a robotic dog -- "turtledog" is an endearing term we've used to describe the final product -- which can recognize commands from a user that signal where it should travel, and it will travel to the destination using an optimal path. We can extend this project idea beyond the classroom by connecting it to a "search and retrieval" or even "search and rescue"-type situation. To accomplish our project task, we split our project into 3 primary components: 1) the A* algorithm, 2) the gesture recognition component, and 3) the robot movement itself, using Odometry to follow the A*-planned path. 
 ## Pictures of A* generated maps and video demos (gesture recognition & physical turtlebot following A* path in maze using Odom)
-
+# Different types of A* paths generated, given different start and end points in the map:
+![map1](https://user-images.githubusercontent.com/55162345/206757938-5491ee86-23f7-47cf-83f8-f58bceac4b59.png)
+![map2](https://user-images.githubusercontent.com/55162345/206757962-474bd843-d25b-42ff-b3ce-2a18028305e1.png)
+![map3](https://user-images.githubusercontent.com/55162345/206757989-13bebc3d-170f-4a44-b7c2-f9fb4ae3289b.png)
+# Example of a reduced map used to move physical turtlebot
+![map5](https://user-images.githubusercontent.com/55162345/206758026-ae179313-16d6-42de-a4fa-30a74abed1f9.png)
+# Demo of gesture recognition
+https://youtu.be/_OyogAWStVs
+# Demo of turtlebot traveling along computed A* path
+https://youtu.be/AeMjspqZgjY
 ## System Architecture
 For moving the robot using the A* path, we do this in move_robot.py. At a high level, what is done is that the shortened A* path is taken into this function, giving us a shorter list of particles and the angle at which the need to go to get to the next point. Move robot takes this list of particles and gets the linear and angular change between two points, in the function get_linear_distance_array. Once we have this list of “instructions” for the robot, we use our odom_callback function to take in the odometry data. We track the previous odom position in old_odom, and calculate the distance between the current odom position and the previous one, and once we have travelled more than the required distance between the two points, as indicated by the linear distance array. Once this is done, the robot stops and turns at a fixed speed, with the time taken on this turn depending on how big the turn is. After this, the whole process repeats, until the movement is finished.
 
